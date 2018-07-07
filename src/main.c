@@ -33,6 +33,8 @@
 #include "ipvs/ipvs.h"
 #include "cfgfile.h"
 #include "ip_tunnel.h"
+#include "netlink.h"
+#include "netshield.h"
 
 #define DPVS    "dpvs"
 #define RTE_LOGTYPE_DPVS RTE_LOGTYPE_USER1
@@ -233,6 +235,11 @@ int main(int argc, char *argv[])
         rte_exit(EXIT_FAILURE, "Fail to init netif_ctrl: %s\n",
                  dpvs_strerror(err));
 
+    if ((err = netshield_init()) != EDPVS_OK) {
+        rte_exit(EXIT_FAILURE, "Fail to init NetShield: %s\n",
+                 dpvs_strerror(err));
+	}
+
     /* config and start all available dpdk ports */
     nports = rte_eth_dev_count();
     for (pid = 0; pid < nports; pid++) {
@@ -265,6 +272,8 @@ int main(int argc, char *argv[])
 
     dpvs_state_set(DPVS_STATE_NORMAL);
 
+	netlink_init();
+
     /* start control plane thread */
     while (1) {
         /* reload configuations if reload flag is set */
@@ -283,13 +292,17 @@ int main(int argc, char *argv[])
 
         /* process mac ring on master */
         neigh_process_ring(NULL);
- 
+
+		netlink_run(); 
+
         /* increase loop counts */
         netif_update_master_loop_cnt();
     }
 
 end:
     dpvs_state_set(DPVS_STATE_FINISH);
+	netlink_term();
+
     if ((err = netif_ctrl_term()) !=0 )
         rte_exit(EXIT_FAILURE, "Fail to term netif_ctrl: %s\n",
                  dpvs_strerror(err));
@@ -299,6 +312,9 @@ end:
         RTE_LOG(ERR, DPVS, "Fail to term tunnel: %s\n", dpvs_strerror(err));
     if ((err = sa_pool_term()) != EDPVS_OK)
         RTE_LOG(ERR, DPVS, "Fail to term sa_pool: %s\n", dpvs_strerror(err));
+    if ((err = netshield_term()) != EDPVS_OK) {
+        RTE_LOG(ERR, DPVS, "Fail to term NetShield: %s\n", dpvs_strerror(err));
+	}
     if ((err = inet_term()) != EDPVS_OK)
         RTE_LOG(ERR, DPVS, "Fail to term inet: %s\n", dpvs_strerror(err));
     if ((err = dpvs_timer_term()) != EDPVS_OK)

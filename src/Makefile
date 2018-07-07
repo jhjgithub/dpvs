@@ -19,7 +19,7 @@
 # Makefile for dpvs (DPVS main program).
 #
 
-#DEBUG := 1		# enable for debug
+DEBUG := 1		# enable for debug
 
 TARGET := dpvs
 
@@ -37,7 +37,8 @@ INCDIRS += -I $(SRCDIR)/../include
 # for dpvs main program.
 CFLAGS += -D __DPVS__ -DDPVS_VERSION=\"$(VERSION_STRING)\" -DDPVS_BUILD_DATE=\"$(DATE_STRING)\"
 
-CFLAGS += -Wall -Werror -Wstrict-prototypes -Wmissing-prototypes -mcmodel=medium
+#CFLAGS += -Wall -Werror -Wstrict-prototypes -Wmissing-prototypes -mcmodel=medium
+CFLAGS += -Werror -Wstrict-prototypes  -mcmodel=medium
 
 ifeq ($(shell test $(GCC_VERSION) -ge 70 && echo 1), 1)
 	CFLAGS += -Wno-format-truncation
@@ -64,7 +65,7 @@ $(TARGET): $(OBJS)
 	@$(CC) $(CFLAGS) $^ -o $@
 	@echo "  $(notdir $@)"
 
-%.o: %.c
+%.o: %.c ./config.mk
 	@$(CC) -c $(CFLAGS) $< -o $@
 	@echo "  $(notdir $@)"
 
@@ -74,3 +75,9 @@ clean:
 
 install:
 	install -m 744 $(TARGET) $(INSDIR)
+
+custom:
+	cd ..;ctags -R
+	
+format:
+	uncrustify --no-backup --mtime -c ./formatter.cfg $(SRCS-y)

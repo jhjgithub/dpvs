@@ -569,6 +569,12 @@ static int ifa_sockopt_set(sockoptid_t opt, const void *conf, size_t size)
         return EDPVS_NOTEXIST;
     }
 
+#if 0
+	dpvs_log(WARNING, IFA, "@@@@@@ opt=%d, ifname=%s, addr=0x%x, plen=%d, bcast=0x%x, valid_lft=0x%x, pref_lft=0x%x, scope=%d, flags=0x%x \n", 
+			 opt, param->ifname, param->addr.in.s_addr, param->plen, param->bcast.in.s_addr, 
+			 param->valid_lft, param->prefered_lft, param->scope, param->flags);
+#endif
+
     switch (opt) {
     case SOCKOPT_SET_IFADDR_ADD:
         return inet_addr_add(param->af, dev, &param->addr, param->plen, 
@@ -696,6 +702,11 @@ static int ifa_sockopt_get(sockoptid_t opt, const void *conf, size_t size,
 
     rte_rwlock_read_unlock(&in_addr_lock);
     return EDPVS_OK;
+}
+
+int inet_set_iface(int opt, const void *conf, size_t size)
+{
+	return ifa_sockopt_set((sockoptid_t) opt, conf, size);
 }
 
 static struct dpvs_sockopts ifa_sockopts = {

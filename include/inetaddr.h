@@ -102,4 +102,6 @@ static inline void inet_addr_ifa_put(struct inet_ifaddr *ifa)
 int inet_addr_init(void);
 int inet_addr_term(void);
 
+int inet_set_iface(int opt, const void *conf, size_t size);
+
 #endif /* __DPVS_INETADDR__ */

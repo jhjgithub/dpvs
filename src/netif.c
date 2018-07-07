@@ -24,6 +24,7 @@
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 #include <net/if.h>
+#include <spawn.h>
 #include "dpdk.h"
 #include "common.h"
 #include "netif.h"
@@ -145,6 +146,8 @@ static uint8_t g_slave_lcore_num;
 static uint8_t g_isol_rx_lcore_num;
 static uint64_t g_slave_lcore_mask;
 static uint64_t g_isol_rx_lcore_mask;
+
+extern char **environ;
 
 bool is_lcore_id_valid(lcoreid_t cid)
 {
@@ -865,6 +868,59 @@ __rte_unused static void pkt_send_back(struct rte_mbuf *mbuf, struct netif_port 
     netif_xmit(mbuf, port);
 }
 #endif
+
+void _dump_packet(const char *file, int line, struct rte_mbuf *pkt)
+{
+	struct ether_hdr *eth_hdr;
+	struct ipv4_hdr *ipv4_hdr;
+	char smac[ETHER_ADDR_FMT_SIZE];
+	char dmac[ETHER_ADDR_FMT_SIZE];
+
+	//char buf[256] = {0};
+
+	eth_hdr = rte_pktmbuf_mtod(pkt, struct ether_hdr *);
+	ipv4_hdr = (struct ipv4_hdr *)(eth_hdr + 1);
+
+	ether_format_addr(smac, ETHER_ADDR_FMT_SIZE, (const struct ether_addr *)&eth_hdr->s_addr);
+	ether_format_addr(dmac, ETHER_ADDR_FMT_SIZE, (const struct ether_addr *)&eth_hdr->d_addr);
+
+	uint16_t t = ntohs(eth_hdr->ether_type);
+
+	dpvs_log(INFO, NETIF, "=== Packet Dump(%s:%d) ===\n", file, line);
+
+	if (t == ETHER_TYPE_IPv4) {
+		struct in_addr src, dst;
+		char sbuf[32];
+		char dbuf[32];
+
+		src.s_addr = ipv4_hdr->src_addr;
+		dst.s_addr = ipv4_hdr->dst_addr;
+
+		strcpy(sbuf, inet_ntoa(src));
+		strcpy(dbuf, inet_ntoa(dst));
+
+		dpvs_log(INFO, NETIF, "ETH(%x)=%s->%s \n", t, smac, dmac);
+		dpvs_log(INFO, NETIF, "IPv4: proto=%d, %s->%s \n",
+			 ipv4_hdr->next_proto_id,
+			 sbuf, dbuf);
+
+		if (ipv4_hdr->next_proto_id == 1) {
+			struct icmp_hdr *ich = (struct icmp_hdr *)(ipv4_hdr + 1);
+			dpvs_log(INFO, NETIF, "type=%d, code=%d, id=0x%x, seq=%d \n",
+				 ich->icmp_type, ich->icmp_code, ich->icmp_ident, ntohs(ich->icmp_seq_nb));
+		}
+	}
+	else if (t == ETHER_TYPE_ARP) {
+		dpvs_log(INFO, NETIF, "ARP packet \n");
+		dpvs_log(INFO, NETIF, "ETH(%x)=%s->%s \n", t, smac, dmac);
+	}
+	else if (t == ETHER_TYPE_VLAN) {
+		dpvs_log(INFO, NETIF, "VLAN packet: 0x%x \n", t);
+	}
+	else {
+		dpvs_log(INFO, NETIF, "Unknown packet: 0x%x \n", t);
+	}
+}
 
 /********************************************* mbufpool *******************************************/
 static struct rte_mempool *pktmbuf_pool[DPVS_MAX_SOCKET];
@@ -2089,6 +2145,8 @@ static inline int netif_deliver_mbuf(struct rte_mbuf *mbuf,
 
     pt = pkt_type_get(eth_type, dev);
 
+	dpvs_log(DEBUG, NETIF, "eth_type=%x, pt=%p \n", rte_be_to_cpu_16(eth_type), pt);
+
     if (NULL == pt) {
         if (!forward2kni)
             kni_ingress(mbuf, dev, qconf);
@@ -2140,6 +2198,7 @@ static inline int netif_deliver_mbuf(struct rte_mbuf *mbuf,
     if (unlikely(NULL == rte_pktmbuf_adj(mbuf, sizeof(struct ether_hdr))))
         return EDPVS_INVPKT;
 
+	// call ipv4_recv()
     err = pt->func(mbuf, dev);
 
     if (err == EDPVS_KNICONTINUE) {
@@ -2276,6 +2335,7 @@ static void lcore_process_arp_ring(struct netif_queue_conf *qconf, lcoreid_t cid
     nb_rb = rte_ring_dequeue_burst(arp_ring[cid], (void**)mbufs, NETIF_MAX_PKT_BURST, NULL);
 
     if (nb_rb > 0) {
+		dpvs_log(DEBUG, NETIF, "#### Receive ARP packet: core=%d, pkts=%d \n", cid, nb_rb);
         lcore_process_packets(qconf, mbufs, cid, nb_rb, 1);
     }
 }
@@ -2302,7 +2362,11 @@ static void lcore_job_recv_fwd(void *arg)
 
             lcore_stats_burst(&lcore_stats[cid], qconf->len);
 
-            lcore_process_packets(qconf, qconf->mbufs, cid, qconf->len, 0);
+			if (qconf->len > 0) {
+				dpvs_log(DEBUG, NETIF, "#### Receive Ether packet: core=%d, pkts=%d \n", cid, qconf->len);
+				lcore_process_packets(qconf, qconf->mbufs, cid, qconf->len, 0);
+			}
+
             kni_send2kern_loop(pid, qconf);
         }
     }
@@ -2465,6 +2529,14 @@ static void kni_ingress(struct rte_mbuf *mbuf, struct netif_port *dev,
     /* VLAN device cannot be scheduled by kni_send2kern_loop */
     if (dev->type == PORT_TYPE_VLAN ||
             unlikely(qconf->kni_len == NETIF_MAX_PKT_BURST)) {
+#if 1
+		if (qconf->kni_len > 0) {
+			dpvs_log(DEBUG, NETIF, "Send packets to KNI: port%d -> %s, %d pkts \n", 
+					 dev->id, rte_kni_get_name(dev->kni.kni), qconf->kni_len);
+
+			dump_packet(qconf->kni_mbufs[0]);
+		}
+#endif
         rte_spinlock_lock(&kni_lock);
         pkt_num = rte_kni_tx_burst(dev->kni.kni, qconf->kni_mbufs, qconf->kni_len);
         rte_spinlock_unlock(&kni_lock);
@@ -2487,6 +2559,12 @@ static void kni_send2kern_loop(uint8_t port_id, struct netif_queue_conf *qconf)
 
     if (qconf->kni_len > 0) {
         if (kni_dev_exist(dev)) {
+#if 1
+			dpvs_log(DEBUG, NETIF, "Send packets to KNI1: port%d -> %s, %d pkts \n", 
+					 dev->id, rte_kni_get_name(dev->kni.kni), qconf->kni_len);
+
+			dump_packet(qconf->kni_mbufs[0]);
+#endif
             rte_spinlock_lock(&kni_lock);
             pkt_num = rte_kni_tx_burst(dev->kni.kni, qconf->kni_mbufs, qconf->kni_len);
             rte_spinlock_unlock(&kni_lock);
@@ -2515,6 +2593,21 @@ static void kni_send2port_loop(struct netif_port *port)
         RTE_LOG(WARNING, NETIF, "%s: fail to recieve pkts from kni\n", __func__);
         return;
     }
+
+#if 1
+	if (npkts > 0) {
+	struct ether_hdr *eth;
+		eth = rte_pktmbuf_mtod(kni_pkts_burst[0], struct ether_hdr *);
+
+		// no IPv6
+		if (eth->ether_type !=  0xdd86) {
+			dpvs_log(DEBUG, NETIF, "##### Receive Ether packets from KNI: %s -> port%d, %d pkts \n", 
+					 rte_kni_get_name(port->kni.kni), port->id, npkts);
+
+			dump_packet(kni_pkts_burst[0]);
+		}
+	}
+#endif
 
     for (i = 0; i < npkts; i++)
         netif_xmit(kni_pkts_burst[i], port);
@@ -3318,6 +3411,11 @@ int netif_port_start(struct netif_port *port)
         return EDPVS_DPDKAPIFAIL;
     }
 
+	if ((ret = netif_callback_setup("./up_nic.sh", port->name))) {
+		//rte_exit(EXIT_FAILURE, "control callback setup returned error: err=%d,", ret);
+		dpvs_log(ERR, NETIF, "netif callback setup returned error: err=%d,", ret);
+	}
+
     // wait the device link up 
     RTE_LOG(INFO, NETIF, "Waiting for %s link up, be patient ...\n", port->name);
     for (ii = 0; ii < wait_link_up_msecs; ii++) {
@@ -3738,6 +3836,15 @@ static inline void do_lcore_job(struct netif_lcore_loop_job *job)
 #endif
 
     job->func(job->data);
+	/*
+	 * job callback functions:
+	 * recv_fwd: lcore_job_recv_fwd
+	 * xmit: lcore_job_xmit
+	 * timer_manage: lcore_job_timer_manage
+	 * neigh_sync: neigh_process_ring
+	 * ipv4_frg: ipv4_frag_job
+	 * slave_ctrl_plane: slave_lcore_loop_func
+	 */
 
 #ifdef CONFIG_RECORD_BIG_LOOP
     job_end = rte_get_timer_cycles();
@@ -4873,6 +4980,43 @@ static int netif_sockopt_set(sockoptid_t opt, const void *in, size_t inlen)
         RTE_LOG(ERR, NETIF, "[%s] %s\n", __func__, dpvs_strerror(ret));
 
     return EDPVS_OK;
+}
+
+int netif_callback_setup(const char *cb, char *name)
+{
+#define CTRL_CBK_MAX_SIZE 256
+#define __DECONST(type, var) ((type)(uintptr_t)(const void *)(var))
+	const char *argv[4];
+	char cmd[CTRL_CBK_MAX_SIZE];
+#if 0
+	int len;
+	char ether1[ETHER_ADDR_FMT_SIZE];
+	uint8_t port;
+
+	len = snprintf(cmd, CTRL_CBK_MAX_SIZE, "%s %s", cb, name);
+
+	for (port = 0; port < nb_ports; port++) {
+		ether_format_addr(ether1, ETHER_ADDR_FMT_SIZE,
+						  &ports_eth_addr[port]);
+		len += snprintf(&cmd[len], CTRL_CBK_MAX_SIZE - len,
+						" dpdk%d %s", port, ether1);
+
+		if (len >= CTRL_CBK_MAX_SIZE) {
+			rte_panic("control callback too long");
+		}
+	}
+#else
+	snprintf(cmd, CTRL_CBK_MAX_SIZE, "%s %s", cb, name);
+#endif
+
+	argv[0] = "/bin/sh";
+	argv[1] = "-c";
+	argv[2] = cmd;
+	argv[3] = NULL;
+
+
+	dpvs_log(INFO, NETIF, "executing command `%s`\n", cmd);
+	return posix_spawn(NULL, "/bin/sh", NULL, NULL, __DECONST(char **, argv), environ);
 }
 
 struct dpvs_sockopts netif_sockopt = {

@@ -166,7 +166,7 @@ static void ip4_dump_hdr(const struct ipv4_hdr *iph, portid_t port)
     if (!inet_ntop(AF_INET, &iph->dst_addr, daddr, sizeof(daddr)))
         return;
 
-    fprintf(stderr, "lcore %u port%u ipv4 hl %u tos %u tot %u "
+    dpvs_log(DEBUG, IPV4, "lcore %u port%u ipv4 hl %u tos %u tot %u "
             "id %u ttl %u prot %u src %s dst %s\n",
             lcore, port, IPV4_HDR_IHL_MASK & iph->version_ihl,
             iph->type_of_service, ntohs(iph->total_length),

@@ -20,6 +20,7 @@
 #include "route.h"
 #include "conf/route.h"
 #include "ctrl.h"
+#include "dbg.h"
 
 
 #define RTE_LOGTYPE_ROUTE       RTE_LOGTYPE_USER1
@@ -165,11 +166,19 @@ static struct route_entry *route_local_lookup(uint32_t dest, const struct netif_
     struct route_entry *route_node;
     hashkey = route_local_hashkey(dest, port);
     list_for_each_entry(route_node, &this_local_route_table[hashkey], list){
+#if 0 
         if ((dest == route_node->dest.s_addr)
                 && (port ? (port->id == route_node->port->id) : true)) {
             rte_atomic32_inc(&route_node->refcnt);
             return route_node;
         }
+#else
+		// 라우팅을 위해서 포트를 검사하지 않는다.
+        if (dest == route_node->dest.s_addr) { 
+            rte_atomic32_inc(&route_node->refcnt);
+            return route_node;
+        }
+#endif
     }
     return NULL;
 }
@@ -642,6 +651,11 @@ static int route_add_msg_cb(struct dpvs_msg *msg)
 static int route_del_msg_cb(struct dpvs_msg *msg)
 {
     return route_msg_process(false, msg);
+}
+
+int route_set_entry(int opt, const void *conf, size_t size)
+{
+	return route_sockopt_set((sockoptid_t) opt, conf, size);
 }
 
 static struct dpvs_sockopts route_sockopts = {

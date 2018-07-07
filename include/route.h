@@ -134,4 +134,6 @@ int route_del(struct in_addr* dest,uint8_t netmask, uint32_t flag,
               struct in_addr* gw, struct netif_port *port,
               struct in_addr* src, unsigned long mtu,short metric);
 
+int route_set_entry(int opt, const void *conf, size_t size);
+
 #endif

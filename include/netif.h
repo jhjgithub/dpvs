@@ -321,6 +321,8 @@ void netif_cfgfile_init(void);
 void netif_keyword_value_init(void);
 void install_netif_keywords(void);
 
+int netif_callback_setup(const char *cb, char *name);
+
 /*************************** kni api *******************************/
 void kni_process_on_master(void);
 

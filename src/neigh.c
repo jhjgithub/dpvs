@@ -205,7 +205,7 @@ static void dump_arp_hdr(const char *msg, const struct arp_hdr *ah, portid_t por
     lcoreid_t lcore;
 
     lcore = rte_lcore_id();
-    fprintf(stderr, "%s lcore %d port%d arp hlen %u plen %u op %u",
+    dpvs_log(DEBUG, NEIGHBOUR, "%s lcore %d port%d arp hlen %u plen %u op %u",
             msg ? msg : "", lcore, port, ah->arp_hln, ah->arp_pln, ntohs(ah->arp_op));
 
     if (ah->arp_pro == htons(ETHER_TYPE_IPv4)) {
@@ -214,9 +214,9 @@ static void dump_arp_hdr(const char *msg, const struct arp_hdr *ah, portid_t por
         eth_addr_itoa(&aip4->arp_tha, tha, sizeof(tha));
         inet_ntop(AF_INET, &aip4->arp_sip, sip, sizeof(sip));
         inet_ntop(AF_INET, &aip4->arp_tip, tip, sizeof(tip));
-        fprintf(stderr, " sha %s sip %s tha %s tip %s", sha, sip, tha, tip);
+        dpvs_log(DEBUG, NEIGHBOUR, " sha %s sip %s tha %s tip %s", sha, sip, tha, tip);
     }
-    fprintf(stderr, "\n");
+    //fprintf(stderr, "\n");
 }
 
 #else

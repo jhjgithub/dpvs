@@ -22,6 +22,8 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <linux/if_ether.h>
+#include "dbg.h"
+
 
 #ifndef NELEMS
 #define NELEMS(a)       (sizeof(a) / sizeof((a)[0]))
