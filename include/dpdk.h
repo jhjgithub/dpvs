@@ -20,7 +20,6 @@
 #include <rte_common.h>
 #include <rte_vect.h>
 #include <rte_byteorder.h>
-#include <rte_log.h>
 #include <rte_memory.h>
 #include <rte_memcpy.h>
 #include <rte_memzone.h>
@@ -55,7 +54,10 @@
 #include <rte_kni.h>
 #include <rte_ip_frag.h>
 #include <rte_eth_bond.h>
+//#include <rte_log.h>
 #include "mbuf.h"
+
+#include "ns_dbg.h"
 
 typedef uint8_t lcoreid_t;
 typedef uint16_t portid_t;

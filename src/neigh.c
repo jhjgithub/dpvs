@@ -199,24 +199,25 @@ static inline char *eth_addr_itoa(const struct ether_addr *src, char *dst, size_
 
 static void dump_arp_hdr(const char *msg, const struct arp_hdr *ah, portid_t port)
 {
-    const struct arp_ipv4 *aip4;
-    char sha[18], tha[18];
-    char sip[16], tip[16];
-    lcoreid_t lcore;
+	const struct arp_ipv4 *aip4;
+	char sha[18], tha[18];
+	char sip[16], tip[16];
+	lcoreid_t lcore;
 
-    lcore = rte_lcore_id();
-    dpvs_log(DEBUG, NEIGHBOUR, "%s lcore %d port%d arp hlen %u plen %u op %u",
-            msg ? msg : "", lcore, port, ah->arp_hln, ah->arp_pln, ntohs(ah->arp_op));
+	lcore = rte_lcore_id();
+	RTE_LOG(DEBUG, NEIGHBOUR, "%s lcore %d port%d arp hlen %u plen %u op %u \n",
+		   msg ? msg : "", lcore, port, ah->arp_hln, ah->arp_pln, ntohs(ah->arp_op));
 
-    if (ah->arp_pro == htons(ETHER_TYPE_IPv4)) {
-        aip4 = &ah->arp_data;
-        eth_addr_itoa(&aip4->arp_sha, sha, sizeof(sha));
-        eth_addr_itoa(&aip4->arp_tha, tha, sizeof(tha));
-        inet_ntop(AF_INET, &aip4->arp_sip, sip, sizeof(sip));
-        inet_ntop(AF_INET, &aip4->arp_tip, tip, sizeof(tip));
-        dpvs_log(DEBUG, NEIGHBOUR, " sha %s sip %s tha %s tip %s", sha, sip, tha, tip);
-    }
-    //fprintf(stderr, "\n");
+	if (ah->arp_pro == htons(ETHER_TYPE_IPv4)) {
+		aip4 = &ah->arp_data;
+		eth_addr_itoa(&aip4->arp_sha, sha, sizeof(sha));
+		eth_addr_itoa(&aip4->arp_tha, tha, sizeof(tha));
+		inet_ntop(AF_INET, &aip4->arp_sip, sip, sizeof(sip));
+		inet_ntop(AF_INET, &aip4->arp_tip, tip, sizeof(tip));
+		RTE_LOG(DEBUG, NEIGHBOUR, " sha %s sip %s tha %s tip %s \n", sha, sip, tha, tip);
+	}
+
+	//fprintf(stderr, "\n");
 }
 
 #else

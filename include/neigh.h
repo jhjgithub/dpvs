@@ -24,19 +24,19 @@
 #include <stdint.h>
 
 #include <rte_arp.h>
-#include <rte_log.h>
 #include <arpa/inet.h>
 #include <rte_timer.h>
 #include <rte_mbuf.h>
 #include <rte_common.h>
-#include <rte_log.h>
 #include <rte_memory.h>
 #include <rte_memcpy.h>
 #include <rte_ether.h>
 #include <rte_ethdev.h>
 #include <rte_mempool.h>
 #include <rte_byteorder.h>
+//#include <rte_log.h>
 
+#include "ns_dbg.h"
 #include "list.h"
 #include "timer.h"
 #include "netif.h"

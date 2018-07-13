@@ -19,15 +19,22 @@
 # Makefile for dpvs (DPVS main program).
 #
 
+QUITE= @
+ifeq ("$(origin V)", "command line")
+	QUITE=
+endif
+
 DEBUG := 1		# enable for debug
 
 TARGET := dpvs
+OBJDIR := obj
 
 VERSION_STRING := $(shell ./VERSION)
 DATE_STRING := $(shell date +%Y.%m.%d.%H:%M:%S)
 
 # same path of THIS Makefile
-SRCDIR := $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
+#SRCDIR := $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
+SRCDIR := .
 
 include $(SRCDIR)/dpdk.mk
 include $(SRCDIR)/config.mk
@@ -53,31 +60,51 @@ else
 endif
 
 LIBS += -lpthread -lnuma
+CFLAGS += $(INCDIRS)
 
-CFLAGS += $(INCDIRS) $(LIBS)
+SRCS    = $(shell find $(SRCDIR) -name '*.c' | sort)
+SRCDIRS = $(shell find $(SRCDIR) -name '*.c' -printf '%h\0' | sort -zu | tr '\0' '\n')
+OBJS    = $(patsubst $(SRCDIR)/%.c,$(OBJDIR)/%.o,$(SRCS))
+DEPS    = $(OBJS:%.o=%.d)
 
-OBJS := $(shell find $(SRCDIR) -name '*.c' | sort)
-OBJS := $(patsubst %.c,%.o,$(OBJS))
+#########################
 
-all: $(TARGET)
+all: buildrepo $(TARGET)
 
 $(TARGET): $(OBJS)
-	@$(CC) $(CFLAGS) $^ -o $@
-	@echo "  $(notdir $@)"
+	$(QUITE)echo "  $(notdir $@)"
+	$(QUITE)$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 
-%.o: %.c ./config.mk
-	@$(CC) -c $(CFLAGS) $< -o $@
-	@echo "  $(notdir $@)"
+buildrepo: 
+	@$(call make-repo)
+
+# Create obj directory structure
+define make-repo
+	mkdir -p $(OBJDIR)
+	for dir in $(SRCDIRS); \
+	do \
+		mkdir -p $(OBJDIR)/$$dir; \
+	done
+endef
+
+$(OBJDIR)/%.o: %.c ./config.mk
+	$(QUITE)$(CC) $(CFLAGS) -MM -MT $@ -MF $(patsubst %.o,%.d,$@) $<
+	$(QUITE)$(CC) -DMY_DBG_NAME=$(basename $(notdir $<)) -c $(CFLAGS) $< -o $@
+	$(QUITE)echo "  $(notdir $@)"
 
 clean:
-	find $(SRCDIR) -name '*.o' | xargs rm -f
+	rm -rf $(OBJDIR)
 	rm -f ./$(TARGET)
 
 install:
-	install -m 744 $(TARGET) $(INSDIR)
+#	install -m 744 $(TARGET) $(INSDIR)
 
 custom:
 	cd ..;ctags -R
-	
+
+FMT_SRC=ns_cmds.c  ns_main.c   netlink.c debug_ctl.c
+
 format:
-	uncrustify --no-backup --mtime -c ./formatter.cfg $(SRCS-y)
+	uncrustify --no-backup --mtime -c ./formatter.cfg $(FMT_SRC)
+
+-include $(DEPS)

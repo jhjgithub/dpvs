@@ -38,6 +38,7 @@
 #include "timer.h"
 #include "parser/parser.h"
 #include "neigh.h"
+#include "ns_def.h"
 
 #include <rte_arp.h>
 #include <netinet/in.h>
@@ -886,7 +887,7 @@ void _dump_packet(const char *file, int line, struct rte_mbuf *pkt)
 
 	uint16_t t = ntohs(eth_hdr->ether_type);
 
-	dpvs_log(INFO, NETIF, "=== Packet Dump(%s:%d) ===\n", file, line);
+	RTE_LOG(DEBUG, NETIF, "=== Packet Dump(%s:%d) ===\n", file, line);
 
 	if (t == ETHER_TYPE_IPv4) {
 		struct in_addr src, dst;
@@ -899,26 +900,26 @@ void _dump_packet(const char *file, int line, struct rte_mbuf *pkt)
 		strcpy(sbuf, inet_ntoa(src));
 		strcpy(dbuf, inet_ntoa(dst));
 
-		dpvs_log(INFO, NETIF, "ETH(%x)=%s->%s \n", t, smac, dmac);
-		dpvs_log(INFO, NETIF, "IPv4: proto=%d, %s->%s \n",
+		RTE_LOG(DEBUG, NETIF, "ETH(%x)=%s->%s \n", t, smac, dmac);
+		RTE_LOG(DEBUG, NETIF, "IPv4: proto=%d, %s->%s \n",
 			 ipv4_hdr->next_proto_id,
 			 sbuf, dbuf);
 
 		if (ipv4_hdr->next_proto_id == 1) {
 			struct icmp_hdr *ich = (struct icmp_hdr *)(ipv4_hdr + 1);
-			dpvs_log(INFO, NETIF, "type=%d, code=%d, id=0x%x, seq=%d \n",
+			RTE_LOG(DEBUG, NETIF, "type=%d, code=%d, id=0x%x, seq=%d \n",
 				 ich->icmp_type, ich->icmp_code, ich->icmp_ident, ntohs(ich->icmp_seq_nb));
 		}
 	}
 	else if (t == ETHER_TYPE_ARP) {
-		dpvs_log(INFO, NETIF, "ARP packet \n");
-		dpvs_log(INFO, NETIF, "ETH(%x)=%s->%s \n", t, smac, dmac);
+		RTE_LOG(DEBUG, NETIF, "ARP packet \n");
+		RTE_LOG(DEBUG, NETIF, "ETH(%x)=%s->%s \n", t, smac, dmac);
 	}
 	else if (t == ETHER_TYPE_VLAN) {
-		dpvs_log(INFO, NETIF, "VLAN packet: 0x%x \n", t);
+		RTE_LOG(DEBUG, NETIF, "VLAN packet: 0x%x \n", t);
 	}
 	else {
-		dpvs_log(INFO, NETIF, "Unknown packet: 0x%x \n", t);
+		RTE_LOG(DEBUG, NETIF, "Unknown packet: 0x%x \n", t);
 	}
 }
 
@@ -932,7 +933,7 @@ static inline void netif_pktmbuf_pool_init(void)
     for (i = 0; i < get_numa_nodes(); i++) {
         snprintf(poolname, sizeof(poolname), "mbuf_pool_%d", i);
         pktmbuf_pool[i] = rte_pktmbuf_pool_create(poolname, netif_pktpool_nb_mbuf,
-                netif_pktpool_mbuf_cache, 0, RTE_MBUF_DEFAULT_BUF_SIZE, i);
+                netif_pktpool_mbuf_cache, NS_TASK_SIZE, RTE_MBUF_DEFAULT_BUF_SIZE, i);
         if (!pktmbuf_pool[i])
             rte_exit(EXIT_FAILURE, "Cannot init mbuf pool on socket %d", i);
     }
@@ -2145,7 +2146,7 @@ static inline int netif_deliver_mbuf(struct rte_mbuf *mbuf,
 
     pt = pkt_type_get(eth_type, dev);
 
-	dpvs_log(DEBUG, NETIF, "eth_type=%x, pt=%p \n", rte_be_to_cpu_16(eth_type), pt);
+	RTE_LOG(DEBUG, NETIF, "eth_type=%x, pt=%p \n", rte_be_to_cpu_16(eth_type), pt);
 
     if (NULL == pt) {
         if (!forward2kni)
@@ -2335,7 +2336,7 @@ static void lcore_process_arp_ring(struct netif_queue_conf *qconf, lcoreid_t cid
     nb_rb = rte_ring_dequeue_burst(arp_ring[cid], (void**)mbufs, NETIF_MAX_PKT_BURST, NULL);
 
     if (nb_rb > 0) {
-		dpvs_log(DEBUG, NETIF, "#### Receive ARP packet: core=%d, pkts=%d \n", cid, nb_rb);
+		RTE_LOG(DEBUG, NETIF, "#### Receive ARP packet: core=%d, pkts=%d \n", cid, nb_rb);
         lcore_process_packets(qconf, mbufs, cid, nb_rb, 1);
     }
 }
@@ -2363,7 +2364,7 @@ static void lcore_job_recv_fwd(void *arg)
             lcore_stats_burst(&lcore_stats[cid], qconf->len);
 
 			if (qconf->len > 0) {
-				dpvs_log(DEBUG, NETIF, "#### Receive Ether packet: core=%d, pkts=%d \n", cid, qconf->len);
+				RTE_LOG(DEBUG, NETIF, "#### Receive Ether packet: core=%d, pkts=%d \n", cid, qconf->len);
 				lcore_process_packets(qconf, qconf->mbufs, cid, qconf->len, 0);
 			}
 
@@ -2531,7 +2532,7 @@ static void kni_ingress(struct rte_mbuf *mbuf, struct netif_port *dev,
             unlikely(qconf->kni_len == NETIF_MAX_PKT_BURST)) {
 #if 1
 		if (qconf->kni_len > 0) {
-			dpvs_log(DEBUG, NETIF, "Send packets to KNI: port%d -> %s, %d pkts \n", 
+			RTE_LOG(DEBUG, NETIF, "Send packets to KNI: port%d -> %s, %d pkts \n", 
 					 dev->id, rte_kni_get_name(dev->kni.kni), qconf->kni_len);
 
 			dump_packet(qconf->kni_mbufs[0]);
@@ -2560,7 +2561,7 @@ static void kni_send2kern_loop(uint8_t port_id, struct netif_queue_conf *qconf)
     if (qconf->kni_len > 0) {
         if (kni_dev_exist(dev)) {
 #if 1
-			dpvs_log(DEBUG, NETIF, "Send packets to KNI1: port%d -> %s, %d pkts \n", 
+			RTE_LOG(DEBUG, NETIF, "Send packets to KNI1: port%d -> %s, %d pkts \n", 
 					 dev->id, rte_kni_get_name(dev->kni.kni), qconf->kni_len);
 
 			dump_packet(qconf->kni_mbufs[0]);
@@ -2601,7 +2602,7 @@ static void kni_send2port_loop(struct netif_port *port)
 
 		// no IPv6
 		if (eth->ether_type !=  0xdd86) {
-			dpvs_log(DEBUG, NETIF, "##### Receive Ether packets from KNI: %s -> port%d, %d pkts \n", 
+			RTE_LOG(DEBUG, NETIF, "##### Receive Ether packets from KNI: %s -> port%d, %d pkts \n", 
 					 rte_kni_get_name(port->kni.kni), port->id, npkts);
 
 			dump_packet(kni_pkts_burst[0]);
@@ -3413,7 +3414,7 @@ int netif_port_start(struct netif_port *port)
 
 	if ((ret = netif_callback_setup("./up_nic.sh", port->name))) {
 		//rte_exit(EXIT_FAILURE, "control callback setup returned error: err=%d,", ret);
-		dpvs_log(ERR, NETIF, "netif callback setup returned error: err=%d,", ret);
+		RTE_LOG(ERR, NETIF, "netif callback setup returned error: err=%d,", ret);
 	}
 
     // wait the device link up 
@@ -5015,7 +5016,7 @@ int netif_callback_setup(const char *cb, char *name)
 	argv[3] = NULL;
 
 
-	dpvs_log(INFO, NETIF, "executing command `%s`\n", cmd);
+	RTE_LOG(DEBUG, NETIF, "executing command `%s`\n", cmd);
 	return posix_spawn(NULL, "/bin/sh", NULL, NULL, __DECONST(char **, argv), environ);
 }
 

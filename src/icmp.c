@@ -18,6 +18,7 @@
 #include <assert.h>
 #include "ipv4.h"
 #include "icmp.h"
+#include "ns_dbg.h"
 #include "netinet/in.h"
 #include "netinet/ip_icmp.h"
 
@@ -34,14 +35,14 @@ struct icmp_ctrl {
 #ifdef CONFIG_DPVS_ICMP_DEBUG
 static void icmp_dump_hdr(const struct rte_mbuf *mbuf)
 {
-    struct icmp_hdr *ich = rte_pktmbuf_mtod(mbuf, struct icmp_hdr *);
-    lcoreid_t lcore = rte_lcore_id();
+	struct icmp_hdr *ich = rte_pktmbuf_mtod(mbuf, struct icmp_hdr *);
+	lcoreid_t lcore = rte_lcore_id();
 
-    dpvs_log(DEBUG, ICMP, "lcore %d port %d icmp type %u code %u id %u seq %u\n",
-            lcore, mbuf->port, ich->icmp_type, ich->icmp_code, 
-            ntohs(ich->icmp_ident), ntohs(ich->icmp_seq_nb));
+	RTE_LOG(DEBUG, ICMP, "lcore %d port %d icmp type %u code %u id %u seq %u\n",
+		    lcore, mbuf->port, ich->icmp_type, ich->icmp_code, 
+		    ntohs(ich->icmp_ident), ntohs(ich->icmp_seq_nb));
 
-    return;
+	return;
 }
 #endif
 

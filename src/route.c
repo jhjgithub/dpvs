@@ -20,7 +20,7 @@
 #include "route.h"
 #include "conf/route.h"
 #include "ctrl.h"
-#include "dbg.h"
+#include "ns_dbg.h"
 
 
 #define RTE_LOGTYPE_ROUTE       RTE_LOGTYPE_USER1

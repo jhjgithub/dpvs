@@ -76,6 +76,9 @@ enum {
 
 struct inet_hook_state {
     unsigned int        hook;
+    int (*okfn)(struct rte_mbuf *mbuf);
+    struct netif_port *in_port;
+	struct netif_port *out_port;
 } __rte_cache_aligned;
 
 enum {

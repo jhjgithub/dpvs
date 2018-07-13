@@ -75,8 +75,8 @@ static int parse_rtattr_flags(struct rtattr *tb[], int max,
 
 	memset(tb, 0, sizeof(struct rtattr *) * (max + 1));
 	while (RTA_OK(rta, len)) {
-		//dpvs_log(INFO, NETLINK, "rta_type=%d \n", rta->rta_type);
-		
+		//RTE_LOG(DEBUG, NETLINK, "rta_type=%d \n", rta->rta_type);
+
 		type = rta->rta_type & ~flags;
 		if ((type <= max) && (!tb[type])) {
 			tb[type] = rta;
@@ -85,7 +85,7 @@ static int parse_rtattr_flags(struct rtattr *tb[], int max,
 	}
 
 	if (len) {
-		dpvs_log(INFO, NETLINK, "!!!Deficit %d, rta_len=%d\n", len, rta->rta_len);
+		RTE_LOG(DEBUG, NETLINK, "!!!Deficit %d, rta_len=%d\n", len, rta->rta_len);
 	}
 
 	return 0;
@@ -135,7 +135,7 @@ netl_handler(struct netl_handle *h,
 		len -= NLMSG_LENGTH(sizeof(*ifi));
 
 		if (len < 0) {
-			dpvs_log(INFO, NETLINK, "Bad length\n");
+			RTE_LOG(DEBUG, NETLINK, "Bad length\n");
 			return -1;
 		}
 
@@ -145,7 +145,7 @@ netl_handler(struct netl_handle *h,
 			return 0;           // This is not ethernet
 		}
 		if (rta_tb[IFLA_IFNAME] == NULL) {
-			dpvs_log(INFO, NETLINK, "No if name\n");
+			RTE_LOG(DEBUG, NETLINK, "No if name\n");
 			return -1;          // There should be a name, this is a bug
 		}
 		if (hdr->nlmsg_type == RTM_DELLINK) {
@@ -194,12 +194,12 @@ netl_handler(struct netl_handle *h,
 		len -= NLMSG_LENGTH(sizeof(*ifa));
 
 		if (len < 0) {
-			dpvs_log(INFO, NETLINK, "Bad length\n");
+			RTE_LOG(DEBUG, NETLINK, "Bad length\n");
 			return -1;
 		}
 
 		if (ifa->ifa_family != AF_INET && ifa->ifa_family != AF_INET6) {
-			dpvs_log(INFO, NETLINK, "Not support protocol\n");
+			RTE_LOG(DEBUG, NETLINK, "Not support protocol\n");
 			return -1;
 		}
 
@@ -226,7 +226,7 @@ netl_handler(struct netl_handle *h,
 		len -= NLMSG_LENGTH(sizeof(*r));
 
 		if (len < 0) {
-			dpvs_log(INFO, NETLINK, "Bad length\n");
+			RTE_LOG(DEBUG, NETLINK, "Bad length\n");
 			return -1;
 		}
 
@@ -244,7 +244,7 @@ netl_handler(struct netl_handle *h,
 		}
 		else {
 			// FIXME:
-			//dpvs_log(INFO, NETLINK, "not supported rtm_type=%d  \n", r->rtm_type);
+			//RTE_LOG(DEBUG, NETLINK, "not supported rtm_type=%d  \n", r->rtm_type);
 			return 0;
 		}
 
@@ -257,13 +257,13 @@ netl_handler(struct netl_handle *h,
 #if 0
 		int table;
 		table = rta_getattr_u32(tb[RTA_TABLE]);
-		dpvs_log(INFO, NETLINK, "##### iif=%p, oif=%p, via=%p, type=%d, oif=%d, ifname=%s, table=%d \n", 
-				 tb[RTA_IIF],
-				 tb[RTA_OIF],
-				 tb[RTA_VIA], r->rtm_type, 
-				 idx,
-				 ifname, 
-				 table);
+		RTE_LOG(DEBUG, NETLINK, "##### iif=%p, oif=%p, via=%p, type=%d, oif=%d, ifname=%s, table=%d \n",
+				tb[RTA_IIF],
+				tb[RTA_OIF],
+				tb[RTA_VIA], r->rtm_type,
+				idx,
+				ifname,
+				table);
 #endif
 
 		netlink_route(hdr->nlmsg_type, r, RTA_DATA(tb[RTA_DST]), RTA_DATA(tb[RTA_GATEWAY]), idx);
@@ -278,14 +278,14 @@ netl_handler(struct netl_handle *h,
 		len -= NLMSG_LENGTH(sizeof(*neighbor));
 
 		if (len < 0) {
-			dpvs_log(INFO, NETLINK, "Bad length\n");
+			RTE_LOG(DEBUG, NETLINK, "Bad length\n");
 			return -1;
 		}
 
 		// Ignore non-ip
 		if (neighbor->ndm_family != AF_INET &&
 			neighbor->ndm_family != AF_INET6) {
-			dpvs_log(INFO, NETLINK, "Bad protocol\n");
+			RTE_LOG(DEBUG, NETLINK, "Bad protocol\n");
 			return 0;
 		}
 
@@ -339,7 +339,7 @@ netl_handler(struct netl_handle *h,
 			}
 			break;
 		default:
-			dpvs_log(INFO, NETLINK, "Bad protocol\n");
+			RTE_LOG(DEBUG, NETLINK, "Bad protocol\n");
 			return -1;
 		}
 	}
@@ -411,36 +411,36 @@ START:
 	iov.iov_len = sizeof(buf);
 	status = recvmsg(h->fd, &msg, 0);
 	if (status < 0) {
-		dpvs_log(INFO, NETLINK, "error receiving netlink %s (%d) \n", strerror(errno), errno);
+		RTE_LOG(DEBUG, NETLINK, "error receiving netlink %s (%d) \n", strerror(errno), errno);
 		return 0;
 	}
 
 	if (status == 0) {
-		dpvs_log(INFO, NETLINK, "EOF on netlink\n");
+		RTE_LOG(DEBUG, NETLINK, "EOF on netlink\n");
 		return 0;
 	}
 
 	if (msg.msg_namelen != sizeof(nladdr)) {
-		dpvs_log(INFO, NETLINK, "Wrong address length\n");
+		RTE_LOG(DEBUG, NETLINK, "Wrong address length\n");
 		return 0;
 	}
 
 	if (iov.iov_len < ((size_t)status) || (msg.msg_flags & MSG_TRUNC)) {
-		dpvs_log(INFO, NETLINK, "Malformatted or truncated message, skipping\n");
+		RTE_LOG(DEBUG, NETLINK, "Malformatted or truncated message, skipping\n");
 		return 0;
 	}
 
 	msg_count = 0;
-	//dpvs_log(DEBUG, NETLINK, "##### Parsing netlink msg\n");
+	//RTE_LOG(DEBUG, NETLINK, "##### Parsing netlink msg\n");
 
 	for (hdr = (struct nlmsghdr *)buf; (size_t)status >= sizeof(*hdr);) {
 		len = hdr->nlmsg_len;
 
-		//dpvs_log(DEBUG, NETLINK, "Processing netlink msg of %d length \n", len);
+		//RTE_LOG(DEBUG, NETLINK, "Processing netlink msg of %d length \n", len);
 
 		err = netl_handler(h, &nladdr, hdr, args);
 		if (err < 0) {
-			dpvs_log(INFO, NETLINK, "netl_handler failed\n");
+			RTE_LOG(DEBUG, NETLINK, "netl_handler failed\n");
 		}
 
 		msg_count++;
@@ -448,10 +448,10 @@ START:
 		hdr = (struct nlmsghdr *)((char *)hdr + NLMSG_ALIGN(len));
 	}
 
-	//dpvs_log(DEBUG, NETLINK, "processed %d netlink msg in buffer\n", msg_count);
+	//RTE_LOG(DEBUG, NETLINK, "processed %d netlink msg in buffer\n", msg_count);
 
 	if (status) {
-		dpvs_log(DEBUG, NETLINK, "Remnant data not read\n");
+		RTE_LOG(DEBUG, NETLINK, "Remnant data not read\n");
 	}
 
 	return 0;
@@ -495,12 +495,12 @@ struct netl_handle* netl_create(unsigned events)
 
 	netl_handle->fd = socket(AF_NETLINK, SOCK_RAW | SOCK_CLOEXEC, NETLINK_ROUTE);
 	if (netl_handle->fd < 0) {
-		dpvs_log(ERR, NETLINK, "Cannot open netlink socket");
+		RTE_LOG(ERR, NETLINK, "Cannot open netlink socket");
 		goto free_netl_handle;
 	}
 
 	if (setsockopt(netl_handle->fd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf)) < 0) {
-		dpvs_log(ERR, NETLINK, "Cannot set RCVBUF");
+		RTE_LOG(ERR, NETLINK, "Cannot set RCVBUF");
 		goto free_netl_handle;
 	}
 
@@ -512,23 +512,23 @@ struct netl_handle* netl_create(unsigned events)
 	netl_handle->cb.route4 = NULL;
 
 	if (bind(netl_handle->fd, (struct sockaddr *)&(netl_handle->local), sizeof(netl_handle->local)) < 0) {
-		dpvs_log(ERR, NETLINK, "Cannot bind netlink socket");
+		RTE_LOG(ERR, NETLINK, "Cannot bind netlink socket");
 		goto free_netl_handle;
 	}
 
 	addr_len = sizeof(netl_handle->local);
 	if (getsockname(netl_handle->fd, (struct sockaddr *)&netl_handle->local, &addr_len) < 0) {
-		dpvs_log(ERR, NETLINK, "Cannot getsockname");
+		RTE_LOG(ERR, NETLINK, "Cannot getsockname");
 		goto free_netl_handle;
 	}
 
 	if (addr_len != sizeof(netl_handle->local)) {
-		dpvs_log(ERR, NETLINK, "Wrong address length");
+		RTE_LOG(ERR, NETLINK, "Wrong address length");
 		goto free_netl_handle;
 	}
 
 	if (netl_handle->local.nl_family != AF_NETLINK) {
-		dpvs_log(ERR, NETLINK, "Wrong address family");
+		RTE_LOG(ERR, NETLINK, "Wrong address family");
 		goto free_netl_handle;
 	}
 
@@ -586,13 +586,13 @@ int netlink_if_addr(int action, unsigned char *addr, struct ifaddrmsg *ifa)
 		opt = SOCKOPT_SET_IFADDR_DEL;
 	}
 	else {
-		dpvs_log(INFO, NETLINK, "Unknown action of ifaddr: %d\n", action);
+		RTE_LOG(DEBUG, NETLINK, "Unknown action of ifaddr: %d\n", action);
 		return -1;
 	}
 
 	int ret = inet_set_iface((int)opt, (const void *)&pm, sizeof(pm));
 	if (ret) {
-		dpvs_log(DEBUG, NETLINK, "ifaddr operation ret=%d \n", ret);
+		RTE_LOG(DEBUG, NETLINK, "ifaddr operation ret=%d \n", ret);
 	}
 
 	return 0;
@@ -610,13 +610,13 @@ int netlink_route(uint16_t msg_type, struct rtmsg *msg, struct in_addr *addr, st
 		opt = SOCKOPT_SET_ROUTE_DEL;
 	}
 	else {
-		dpvs_log(ERR, NETLINK, "Unknown msg_type=%d\n", msg_type);
+		RTE_LOG(ERR, NETLINK, "Unknown msg_type=%d\n", msg_type);
 		return -1;
 	}
 
 	memset(&cf, 0, sizeof(cf));
 
-	cf.af =  msg->rtm_family;
+	cf.af = msg->rtm_family;
 	cf.scope = ROUTE_CF_SCOPE_KNI;
 	memcpy(&cf.dst.in, addr, sizeof(struct in_addr));
 	cf.plen = msg->rtm_dst_len;
@@ -626,7 +626,7 @@ int netlink_route(uint16_t msg_type, struct rtmsg *msg, struct in_addr *addr, st
 
 	int ret = route_set_entry((int)opt, (const void *)&cf, sizeof(cf));
 	if (ret) {
-		dpvs_log(ERR, NETLINK, "route operation ret=%d \n", ret);
+		RTE_LOG(ERR, NETLINK, "route operation ret=%d \n", ret);
 	}
 
 	return 0;
@@ -688,7 +688,7 @@ netlink_neighbor4(neighbor_action_t		action,
 
 		s = sscanf(ibuf, "dpdk%10u.%10u", &port_id, &kni_vlan);
 		if (s <= 0) {
-			//dpvs_log(DEBUG, NETLINK, "received a neighbor announce for an unmanaged iface %s\n", ibuf);
+			//RTE_LOG(DEBUG, NETLINK, "received a neighbor announce for an unmanaged iface %s\n", ibuf);
 			return -1;
 		}
 		else if (s == 1) {
@@ -709,33 +709,33 @@ netlink_neighbor4(neighbor_action_t		action,
 #endif
 
 		if (flags != NUD_REACHABLE && flags != NUD_FAILED && flags != NUD_PERMANENT) {
-			dpvs_log(NOTICE, NETLINK, "don't handle state of neighbor4 (state 0x%x, %s)...\n", flags, ipbuf);
+			RTE_LOG(NOTICE, NETLINK, "don't handle state of neighbor4 (state 0x%x, %s)...\n", flags, ipbuf);
 			return -1;
 		}
 
-		dpvs_log(NOTICE, NETLINK, "Adding ipv4 neighbor %s with port %s vlan_id %x nexthop_id %d state 0x%x...\n", 
-				 ipbuf, ibuf, kni_vlan, nexthop_id, flags);
+		RTE_LOG(NOTICE, NETLINK, "Adding ipv4 neighbor %s with port %s vlan_id %x nexthop_id %d state 0x%x...\n",
+				ipbuf, ibuf, kni_vlan, nexthop_id, flags);
 
 #if 0
 		s = neighbor4_lookup_nexthop(neighbor4_struct[socket_id], addr, &nexthop_id);
 		if (s < 0) {
 			s = neighbor4_add_nexthop(neighbor4_struct[socket_id], addr, &nexthop_id, NEI_ACTION_FWD);
 			if (s < 0) {
-				dpvs_log(ERR, NETLINK, "failed to add a nexthop in neighbor table...\n");
+				RTE_LOG(ERR, NETLINK, "failed to add a nexthop in neighbor table...\n");
 				return -1;
 			}
 
-			dpvs_log(NOTICE, NETLINK, "adding ipv4 neighbor %s with port %s vlan_id %x nexthop_id %d ...\n", 
-					 ipbuf, ibuf, kni_vlan, nexthop_id);
+			RTE_LOG(NOTICE, NETLINK, "adding ipv4 neighbor %s with port %s vlan_id %x nexthop_id %d ...\n",
+					ipbuf, ibuf, kni_vlan, nexthop_id);
 
-			s = rte_lpm_lookup(ipv4_pktj_lookup_struct[socket_id], 
+			s = rte_lpm_lookup(ipv4_pktj_lookup_struct[socket_id],
 							   rte_be_to_cpu_32(addr->s_addr), &find_id);
 			if (s == 0) {
 				s = rte_lpm_add(ipv4_pktj_lookup_struct[socket_id],
 								rte_be_to_cpu_32(addr->s_addr), 32, nexthop_id);
 				if (s < 0) {
 					lpm4_stats[socket_id].nb_add_ko++;
-					dpvs_log(ERR, NETLINK, "failed to add a route in lpm during neighbor adding...\n");
+					RTE_LOG(ERR, NETLINK, "failed to add a route in lpm during neighbor adding...\n");
 					return -1;
 				}
 
@@ -750,8 +750,8 @@ netlink_neighbor4(neighbor_action_t		action,
 			neighbor4_set_action(neighbor4_struct[socket_id], nexthop_id, NEI_ACTION_FWD);
 		}
 
-		dpvs_log(DEBUG, NETLINK, "set neighbor4 with port_id %d state %d\n", port_id, flags);
-		neighbor4_set_lladdr_port(neighbor4_struct[socket_id], nexthop_id, 
+		RTE_LOG(DEBUG, NETLINK, "set neighbor4 with port_id %d state %d\n", port_id, flags);
+		neighbor4_set_lladdr_port(neighbor4_struct[socket_id], nexthop_id,
 								  &ports_eth_addr[port_id], lladdr, port_id, kni_vlan);
 
 		neighbor4_set_state(neighbor4_struct[socket_id], nexthop_id, flags);
@@ -759,17 +759,17 @@ netlink_neighbor4(neighbor_action_t		action,
 	}
 	else if (action == NEIGHBOR_DELETE) {
 		if (flags != NUD_FAILED && flags != NUD_STALE) {
-			dpvs_log(DEBUG, NETLINK, "neighbor4 delete ope failed, bad NUD state: 0x%x \n", flags);
+			RTE_LOG(DEBUG, NETLINK, "neighbor4 delete ope failed, bad NUD state: 0x%x \n", flags);
 			return -1;
 		}
 
-		dpvs_log(NOTICE, NETLINK, "Deleting ipv4 neighbor %s with port %s vlan_id %d state 0x%x ...\n", 
-				 ipbuf, ibuf, kni_vlan, flags);
+		RTE_LOG(NOTICE, NETLINK, "Deleting ipv4 neighbor %s with port %s vlan_id %d state 0x%x ...\n",
+				ipbuf, ibuf, kni_vlan, flags);
 #if 0
-		dpvs_log(DEBUG, NETLINK, "deleting ipv4 neighbor...\n");
+		RTE_LOG(DEBUG, NETLINK, "deleting ipv4 neighbor...\n");
 		s = neighbor4_lookup_nexthop(neighbor4_struct[socket_id], addr, &nexthop_id);
 		if (s < 0) {
-			dpvs_log(NOTICE, NETLINK, "failed to find a nexthop to delete in neighbor table...\n");
+			RTE_LOG(NOTICE, NETLINK, "failed to find a nexthop to delete in neighbor table...\n");
 			return 0;
 		}
 
@@ -779,7 +779,7 @@ netlink_neighbor4(neighbor_action_t		action,
 			s = rte_lpm_delete(ipv4_pktj_lookup_struct[socket_id], rte_be_to_cpu_32(addr->s_addr), 32);
 			if (s < 0) {
 				lpm4_stats[socket_id].nb_del_ko++;
-				dpvs_log(ERR, NETLINK, "failed to delete route...\n");
+				RTE_LOG(ERR, NETLINK, "failed to delete route...\n");
 				return -1;
 			}
 
@@ -788,7 +788,7 @@ netlink_neighbor4(neighbor_action_t		action,
 #endif
 	}
 
-	dpvs_log(DEBUG, NETLINK, "neigh %s operation success\n", ipbuf);
+	RTE_LOG(DEBUG, NETLINK, "neigh %s operation success\n", ipbuf);
 
 	return 0;
 }
@@ -851,11 +851,11 @@ netlink_neighbor6(neighbor_action_t		action,
 		s = sscanf(ibuf, "dpdk%10u.%10u", &port_id, &kni_vlan);
 
 		if (s <= 0) {
-			dpvs_log(NOTICE, NETLINK,
-					 "received a neighbor "
-					 "announce for an unmanaged "
-					 "iface %s\n",
-					 ibuf);
+			RTE_LOG(NOTICE, NETLINK,
+					"received a neighbor "
+					"announce for an unmanaged "
+					"iface %s\n",
+					ibuf);
 			return -1;
 		}
 		else if (s == 1) {
@@ -864,17 +864,17 @@ netlink_neighbor6(neighbor_action_t		action,
 
 		if (flags != NUD_REACHABLE && flags != NUD_FAILED
 			&& flags != NUD_PERMANENT) {
-			dpvs_log(NOTICE, NETLINK,
-					 "don't handle state of neighbor6 "
-					 "(state %d, %s)...\n",
-					 flags, ipbuf);
+			RTE_LOG(NOTICE, NETLINK,
+					"don't handle state of neighbor6 "
+					"(state %d, %s)...\n",
+					flags, ipbuf);
 			return -1;
 		}
 
 		s = neighbor6_lookup_nexthop(neighbor6_struct[socket_id], addr,
 									 &nexthop_id);
 		if (s < 0) {
-			dpvs_log(
+			RTE_LOG(
 				DEBUG, NETLINK,
 				"adding ipv6 neighbor %s with port_id %d "
 				"vlan_id %d...\n",
@@ -884,10 +884,10 @@ netlink_neighbor6(neighbor_action_t		action,
 									  addr, &nexthop_id,
 									  NEI_ACTION_FWD);
 			if (s < 0) {
-				dpvs_log(ERR, NETLINK,
-						 "failed to add a "
-						 "nexthop in neighbor "
-						 "table...\n");
+				RTE_LOG(ERR, NETLINK,
+						"failed to add a "
+						"nexthop in neighbor "
+						"table...\n");
 				return -1;
 			}
 
@@ -902,10 +902,10 @@ netlink_neighbor6(neighbor_action_t		action,
 					addr->s6_addr, 128, nexthop_id);
 				if (s < 0) {
 					lpm6_stats[socket_id].nb_add_ko++;
-					dpvs_log(ERR, NETLINK,
-							 "failed to add a route in "
-							 "lpm during neighbor "
-							 "adding...\n");
+					RTE_LOG(ERR, NETLINK,
+							"failed to add a route in "
+							"lpm during neighbor "
+							"adding...\n");
 					return -1;
 				}
 				lpm6_stats[socket_id].nb_add_ok++;
@@ -920,9 +920,9 @@ netlink_neighbor6(neighbor_action_t		action,
 			neighbor6_set_action(neighbor6_struct[socket_id],
 								 nexthop_id, NEI_ACTION_FWD);
 		}
-		dpvs_log(DEBUG, NETLINK,
-				 "set neighbor6 with port_id %d state %d \n", port_id,
-				 flags);
+		RTE_LOG(DEBUG, NETLINK,
+				"set neighbor6 with port_id %d state %d \n", port_id,
+				flags);
 		neighbor6_set_lladdr_port(neighbor6_struct[socket_id],
 								  nexthop_id, &ports_eth_addr[port_id],
 								  lladdr, port_id, kni_vlan);
@@ -931,21 +931,21 @@ netlink_neighbor6(neighbor_action_t		action,
 	}
 	if (action == NEIGHBOR_DELETE) {
 		if (flags != NUD_FAILED && flags != NUD_STALE) {
-			dpvs_log(
+			RTE_LOG(
 				DEBUG, NETLINK,
 				"neighbor6 delete ope failed, bad NUD state: %d \n",
 				flags);
 			return -1;
 		}
 
-		dpvs_log(DEBUG, NETLINK, "deleting ipv6 neighbor...\n");
+		RTE_LOG(DEBUG, NETLINK, "deleting ipv6 neighbor...\n");
 		s = neighbor6_lookup_nexthop(neighbor6_struct[socket_id], addr,
 									 &nexthop_id);
 		if (s < 0) {
-			dpvs_log(NOTICE, NETLINK,
-					 "failed to find a nexthop to "
-					 "delete in neighbor "
-					 "table...\n");
+			RTE_LOG(NOTICE, NETLINK,
+					"failed to find a nexthop to "
+					"delete in neighbor "
+					"table...\n");
 			return 0;
 		}
 		neighbor6_delete(neighbor6_struct[socket_id], nexthop_id);
@@ -957,8 +957,8 @@ netlink_neighbor6(neighbor_action_t		action,
 								addr->s6_addr, 128);
 			if (s < 0) {
 				lpm6_stats[socket_id].nb_del_ko++;
-				dpvs_log(ERR, NETLINK,
-						 "failed to delete route...\n");
+				RTE_LOG(ERR, NETLINK,
+						"failed to delete route...\n");
 				return -1;
 			}
 
@@ -968,9 +968,9 @@ netlink_neighbor6(neighbor_action_t		action,
 			lpm6_stats[socket_id].nb_del_ok++;
 		}
 	}
-	dpvs_log(DEBUG, NETLINK, "neigh %s ope success\n", ipbuf);
+	RTE_LOG(DEBUG, NETLINK, "neigh %s ope success\n", ipbuf);
 #else
-	dpvs_log(DEBUG, NETLINK, "neigh6 operation success\n");
+	RTE_LOG(DEBUG, NETLINK, "neigh6 operation success\n");
 #endif
 
 	return 0;
@@ -1022,7 +1022,7 @@ netlink_eth_link(link_action_t		action,
 	fprintf(stdout, "\n");
 	fflush(stdout);
 #else
-	//dpvs_log(DEBUG, NETLINK, "ether link operation success \n");
+	//RTE_LOG(DEBUG, NETLINK, "ether link operation success \n");
 #endif
 
 	return 0;
@@ -1036,7 +1036,7 @@ void* _netlink_init(int32_t socket_id, unsigned events)
 
 	netl_h = netl_create(events);
 	if (netl_h == NULL) {
-		dpvs_log(ERR, NETLINK, "Couldn't initialize netlink socket");
+		RTE_LOG(ERR, NETLINK, "Couldn't initialize netlink socket");
 		goto err;
 	}
 
@@ -1052,18 +1052,17 @@ void* _netlink_init(int32_t socket_id, unsigned events)
 	return netl_h;
 
 err:
-	dpvs_log(ERR, NETLINK, "failed to init control_main");
+	RTE_LOG(ERR, NETLINK, "failed to init control_main");
 
 	return NULL;
 }
-
 
 void netlink_init(void)
 {
 	g_netl_h = _netlink_init(-1, NETLINK4_EVENTS);
 
 	if (g_netl_h == NULL) {
-		dpvs_log(ERR, NETLINK, "Couldn't initialize netlink socket");
+		RTE_LOG(ERR, NETLINK, "Couldn't initialize netlink socket");
 	}
 }
 
