@@ -27,7 +27,7 @@ typedef struct nscmd_module_s {
 enum nscmd_index{
 	NSCMD_IDX(frag),
 	NSCMD_IDX(inet),
-	NSCMD_IDX(tinfo),
+	NSCMD_IDX(taskinfo),
 
 	NSCMD_IDX(smgr_fast),
 	NSCMD_IDX(smgr_slow),

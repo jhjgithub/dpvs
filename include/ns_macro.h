@@ -53,7 +53,6 @@
 #define IS_LOCALOUT(u)			(u->flags & NST_FLAG_HOOK_LOCAL_OUT)
 #define IS_DST_VPN(dst)			((dst)->obsolete == -1)
 
-#if 0
 ///////////////////////////////////////////
 // 
 /* INFO: LOCK은 반드시 아래와 같은 스티일로 코딩 해야 한다.
@@ -65,11 +64,11 @@
 */
 // 데이터를 write를 해야 하는 경우 사용
 // _irq는 soft-irq(Bottom-Half) 상태에서 사용
-#define	ns_rw_trylock_irq(l) spin_trylock_bh(l)
-#define	ns_rw_lock_irq(l) 	spin_lock_bh(l);
-#define	ns_rw_unlock_irq(l) spin_unlock_bh(l);
-#define	ns_rw_lock(l)		spin_lock(l);
-#define	ns_rw_unlock(l)		spin_unlock(l);
+#define	ns_rw_trylock_irq(l) rte_spinlock_trylock(l)
+#define	ns_rw_lock_irq(l) 	rte_spinlock_lock(l);
+#define	ns_rw_unlock_irq(l) rte_spinlock_unlock(l);
+#define	ns_rw_lock(l)		rte_spinlock_lock(l);
+#define	ns_rw_unlock(l)		rte_spinlock_unlock(l);
 
 // 데이터를 읽기만 하는 경우 사용
 #define	ns_rd_lock_irq()	rcu_read_lock_bh();
@@ -77,7 +76,7 @@
 #define	ns_rd_lock()		rcu_read_lock();
 #define	ns_rd_unlock()		rcu_read_unlock();
 
-#define ns_init_lock(l) 	spin_lock_init(l)
+#define ns_init_lock(l) 	rte_spinlock_init(l)
 ///////////////////////////////////////////////////////////
 
 #define IS_SYN_ONLY(t) 		(t->syn && !(t->rst|t->fin|t->ack))
@@ -87,7 +86,6 @@
 #define KER_VER_LT(maj,mid,min) (LINUX_VERSION_CODE <  KERNEL_VERSION(maj,mid,min))
 #define KER_VER_LE(maj,mid,min) (LINUX_VERSION_CODE <= KERNEL_VERSION(maj,mid,min))
 #define KER_VER_GT(maj,mid,min) (LINUX_VERSION_CODE > KERNEL_VERSION(maj,mid,min))
-#endif
 
 #define CMP_MAC_HI(mac1, mac2) 	(*(uint32_t*)mac1 == *(uint32_t*)mac2)
 #define CMP_MAC_LO(mac1, mac2) 	(*(uint16_t*)&mac1[4] == *(uint16_t*)&mac2[4])
@@ -97,16 +95,7 @@
 #define ns_copy_ipv6(d,s) 		memcpy((d), (s), 16)
 #define PROTO(nstask) 			(nstask)->key.proto
 
-#if 0
-#define wsnprintf(buf, buflen, maxlen, fmt, args...) \
-	do { \
-		int32_t __len; \
-		__len = snprintf((*(buf)), maxlen-(*(buflen)), fmt, ##args); \
-		(*(buf)) += __len; (*(buflen)) += __len; \
-	} while(0);
-#endif
 
-//#define ns_bug(fmt, args...)	ns_log_print(-1, LOG_LEV_ERR, "NetShield BUG: " NS_FUNC_FMT fmt, NS_FUNC_PARAM, ##args)
 
 
 #endif

@@ -88,10 +88,8 @@ extern void dump_pkt(char* func, int32_t line, struct ipv4_hdr *iph, uint8_t ini
 #define	_DBGKEY6(n, l, msg, _kkk) 	\
 	if (CMP_LEV(DBG_NAME(n),l)) {	\
 		skey_t* _k = _kkk; ip6_t _s, _d;\
-		_s.a64[0] = htonll(_k->src6.a64[0]); \
-		_s.a64[1] = htonll(_k->src6.a64[1]); \
-		_d.a64[0] = htonll(_k->dst6.a64[0]); \
-		_d.a64[1] = htonll(_k->dst6.a64[1]); \
+		_s = _k->src6.v6; \
+		_d = _k->dst6.v6; \
 		OUT_MSG(__STR(msg) SKEY_FMT6, &_s, _k->sp, &_d, _k->dp, _k->proto); \
 	}
 #define DBGKEY6(l, msg, _kk) 	_DBGKEY6(MY_DBG_NAME, l, msg, _kk)

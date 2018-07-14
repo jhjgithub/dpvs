@@ -4,13 +4,15 @@
 #include <netinet/udp.h>
 #include <netinet/tcp.h>
 #include <linux/icmp.h>
+#include <linux/icmpv6.h>
 #include "dpdk.h"
 #include "ns_type_defs.h"
-#include "ns_dbg.h"
+#include "ns_macro.h"
 #include "netshield.h"
 #include "ns_task.h"
 #include "ns_cmds.h"
-#include <linux/icmpv6.h>
+#include "ns_dbg.h"
+#include "dump.h"
 
 #if 0
 #include <include_os.h>
@@ -21,11 +23,12 @@
 #include <log.h>
 #include <misc.h>
 #endif
+
 #include <parse_proto.h>
 
 //////////////////////////////////////////////////////
 
-DECLARE_DBG_LEVEL(2);
+DECLARE_DBG_LEVEL(9);
 
 uint16_t parse_ip_options(iph_t* iph);
 int32_t parse_tcp_options(ns_task_t* nstask);
@@ -46,18 +49,18 @@ uint8_t icmp_type_invmap[] = {
 	[ICMP_ADDRESSREPLY] = ICMP_ADDRESS + 1
 };
 
+#define NDISC_NEIGHBOUR_SOLICITATION    135
+#define NDISC_NEIGHBOUR_ADVERTISEMENT   136
 uint8_t icmp6_type_invmap[] = {
-#if 0
 	[ICMPV6_ECHO_REQUEST - 128]	= ICMPV6_ECHO_REPLY + 1,
 	[ICMPV6_ECHO_REPLY - 128]	= ICMPV6_ECHO_REQUEST + 1,
 	[NDISC_NEIGHBOUR_SOLICITATION - 128] = NDISC_NEIGHBOUR_ADVERTISEMENT + 1,
 	[NDISC_NEIGHBOUR_ADVERTISEMENT - 128] = NDISC_NEIGHBOUR_SOLICITATION + 1,
 	[ICMPV6_NI_QUERY - 128]		= ICMPV6_NI_REPLY + 1,
 	[ICMPV6_NI_REPLY - 128]		= ICMPV6_NI_QUERY +1
-#endif
 };
 
-uint8_t ns_get_inv_icmp_type(uint8_t icmp_type, uint32_t fflag)
+uint8_t get_inv_icmp_type(uint8_t icmp_type, uint32_t fflag)
 {
 	if (fflag & FUNC_FLAG_IPV6)
 		return (icmp6_type_invmap[icmp_type-128]-1);
@@ -65,26 +68,99 @@ uint8_t ns_get_inv_icmp_type(uint8_t icmp_type, uint32_t fflag)
 		return (icmp_type_invmap[icmp_type]-1);
 }
 
+int32_t build_icmp_key(const char *data, skey_t *skey, int32_t *pkt_len, uint32_t *flags)
+{
+	int32_t ret = 0;
+	uint8_t icmp_type[2] = {0 , 0};
+	icmph_t *ic = NULL;
+
+	ic = (icmph_t *)data;
+	*pkt_len += sizeof(icmph_t);
+
+	/*
+	 *	18 is the highest 'known' ICMP type. Anything else is a mystery
+	 *	RFC 1122: 3.2.2  Unknown ICMP messages types MUST be silently  discarded.
+	 *	from netfilter
+	 */
+
+	if (ic->type > NR_ICMP_TYPES) {
+		ns_err("Invalid ICMP type : %d", ic->type);
+		return -1;
+	}
+
+	// icmp type
+	icmp_type[0] = ic->type;
+	icmp_type[1] = 0;
+	skey->sp = 0;
+
+	switch (ic->type) {
+	case ICMP_ECHOREPLY:
+	case ICMP_ECHO:
+		// icmp id를 채운다.
+		skey->sp = ntohs(ic->un.echo.id);
+		icmp_type[1] = get_inv_icmp_type(ic->type, 0);
+		break;
+
+	case 9:
+	case 10:
+		break;
+
+	case ICMP_TIMESTAMP:
+	case ICMP_TIMESTAMPREPLY:
+		*pkt_len += 12;
+		icmp_type[1] = get_inv_icmp_type(ic->type, 0);
+		break;
+
+	case ICMP_INFO_REQUEST:
+	case ICMP_INFO_REPLY:
+		icmp_type[1] = get_inv_icmp_type(ic->type, 0);
+		break;
+
+	case ICMP_ADDRESS:
+	case ICMP_ADDRESSREPLY:
+		icmp_type[1] = get_inv_icmp_type(ic->type, 0);
+		*pkt_len += 4;
+		break;
+
+	case ICMP_DEST_UNREACH:
+	case ICMP_SOURCE_QUENCH:
+	case ICMP_REDIRECT:
+	case ICMP_TIME_EXCEEDED:
+	case ICMP_PARAMETERPROB:
+		*pkt_len += (sizeof(iph_t) + 8);
+		*flags |= TASK_FLAG_ICMPERR;
+
+		break;
+
+	default:
+		break;
+	}
+
+	skey->dp = icmp_type[0] ^ icmp_type[1];
+
+	return ret;
+}
+
 int32_t build_skey(iph_t *iph, skey_t *skey, int32_t *pkt_len, uint32_t *flags)
 {
 	int32_t hlen = *pkt_len;
 	uint8_t *data = (uint8_t *)iph + hlen;
-	tph_t *t = NULL;
-	uph_t *u = NULL;
-	ich_t *ic = NULL;
+	tcph_t *t = NULL;
+	udph_t *u = NULL;
+	icmph_t *ic = NULL;
 	int32_t ret = 0;
 
 	ENT_FUNC(3);
 
 	// 패킷 정보를 이용해서 룰 검색 데이터를 만든다.
 	// 영역 검사 등 비교를 위해서는 host order로 저장 되어야 한다.
-	skey->src.v4 = ntohl(iph->src_addr);
-	skey->dst.v4 = ntohl(iph->dst_addr);
+	skey->src = ntohl(iph->src_addr);
+	skey->dst = ntohl(iph->dst_addr);
 	skey->proto = iph->next_proto_id;
 
 	switch (iph->next_proto_id) {
 	case IPPROTO_UDP:
-		u = (uph_t *)data;
+		u = (udph_t *)data;
 		*pkt_len += sizeof(struct udphdr);
 
 		skey->sp = ntohs(u->source);
@@ -93,8 +169,8 @@ int32_t build_skey(iph_t *iph, skey_t *skey, int32_t *pkt_len, uint32_t *flags)
 		break;
 
 	case IPPROTO_TCP:
-		t = (tph_t *)data;
-		*pkt_len += sizeof(tph_t);
+		t = (tcph_t *)data;
+		*pkt_len += sizeof(tcph_t);
 
 		skey->sp = ntohs(t->source);
 		skey->dp = ntohs(t->dest);
@@ -102,74 +178,7 @@ int32_t build_skey(iph_t *iph, skey_t *skey, int32_t *pkt_len, uint32_t *flags)
 		break;
 
 	case IPPROTO_ICMP: 
-		{
-			uint8_t icmp_type[2] = {0 , 0};
-
-			ic = (ich_t *)data;
-			*pkt_len += sizeof(ich_t);
-
-			/*
-			 *	18 is the highest 'known' ICMP type. Anything else is a mystery
-			 *	RFC 1122: 3.2.2  Unknown ICMP messages types MUST be silently  discarded.
-			 *	from netfilter
-			 */
-
-			if (ic->type > NR_ICMP_TYPES) {
-				ret = -1;
-				ns_err("Invalid ICMP type : %d", ic->type);
-				break;
-			}
-
-			// icmp type
-			icmp_type[0] = ic->type;
-			icmp_type[1] = 0;
-			skey->sp = 0;
-
-			switch (ic->type) {
-			case ICMP_ECHOREPLY:
-			case ICMP_ECHO:
-				// icmp id를 채운다.
-				skey->sp = ntohs(ic->un.echo.id);
-				icmp_type[1] = ns_get_inv_icmp_type(ic->type, 0);
-				break;
-
-			case 9:
-			case 10:
-				break;
-
-			case ICMP_TIMESTAMP:
-			case ICMP_TIMESTAMPREPLY:
-				*pkt_len += 12;
-				icmp_type[1] = ns_get_inv_icmp_type(ic->type, 0);
-				break;
-
-			case ICMP_INFO_REQUEST:
-			case ICMP_INFO_REPLY:
-				icmp_type[1] = ns_get_inv_icmp_type(ic->type, 0);
-				break;
-
-			case ICMP_ADDRESS:
-			case ICMP_ADDRESSREPLY:
-				icmp_type[1] = ns_get_inv_icmp_type(ic->type, 0);
-				*pkt_len += 4;
-				break;
-
-			case ICMP_DEST_UNREACH:
-			case ICMP_SOURCE_QUENCH:
-			case ICMP_REDIRECT:
-			case ICMP_TIME_EXCEEDED:
-			case ICMP_PARAMETERPROB:
-				*pkt_len += (sizeof(iph_t) + 8);
-				*flags |= TASK_FLAG_ICMPERR;
-
-				break;
-
-			default:
-				break;
-			}
-
-			skey->dp = icmp_type[0] ^ icmp_type[1];
-		}
+		ret = build_icmp_key(data, skey, pkt_len, flags);
 		break;
 
 	default:
@@ -185,19 +194,21 @@ int32_t build_skey(iph_t *iph, skey_t *skey, int32_t *pkt_len, uint32_t *flags)
 
 int32_t parse_inet_protocol(ns_task_t *nstask)
 {
-	skb_t *skb = ns_get_mbuf(nstask);
+	skb_t *skb;
 	iph_t *iph;
+	tcph_t *th;
 	int32_t dlen;
 
 	ENT_FUNC(3);
 
+	skb = ns_get_skb(nstask);
 	iph = ns_iph(skb);
 
-#if 0
 	// XXX dlen과 iph->tot_len이 같은지 검사해야 한다 !
-	//dlen = skb->len;
+	//dlen = ntohs(iph->total_length);
+	dlen = skb->pkt_len;
+	nstask->ip_hlen = ip4_hdrlen(skb);
 
-	nstask->ip_hlen = iph->ihl << 2;
 	// is this correct length ?
 	if (nstask->ip_hlen > dlen) {
 		return NS_DROP;
@@ -211,38 +222,42 @@ int32_t parse_inet_protocol(ns_task_t *nstask)
 		return NS_ACCEPT;
 	}
 
-	ns_set_transport_header(nstask->pkt, (uint8_t *)iph, nstask->ip_hlen);
 	nstask->l4_hlen = 0;
 	nstask->l4_dlen = 0;
-
 	nstask->iopt = parse_ip_options(iph);
 
 	switch (iph->next_proto_id) {
-		case IPPROTO_TCP:
-			nstask->l4_hlen = ns_tcph(nstask->pkt)->doff << 2;
-			parse_tcp_options(nstask);
-			break;
+	case IPPROTO_TCP:
+		th = rte_pktmbuf_mtod_offset(skb, tcph_t *, nstask->ip_hlen);
+		//uh = rte_pktmbuf_mtod_offset(skb, struct udp_hdr *, sizeof(struct ether_hdr) + 
+		// (IPV4_HDR_IHL_MASK & iph->version_ihl) * sizeof(uint32_t));
+		//th = mbuf_header_pointer(mbuf, iph->len, sizeof(_tcph), &_tcph);
+		//nstask->l4_hlen = ns_tcph(nstask->pkt)->doff << 2;
+		nstask->l4_hlen = th->doff << 2;
 
-		case IPPROTO_UDP:
-			nstask->l4_hlen = sizeof(uph_t);
-			break;
+		parse_tcp_options(nstask);
+		break;
 
-		case IPPROTO_ICMP:
-			nstask->l4_hlen = sizeof(ich_t);
-			break;
+	case IPPROTO_UDP:
+		nstask->l4_hlen = sizeof(udph_t);
+		break;
+
+	case IPPROTO_ICMP:
+		nstask->l4_hlen = sizeof(icmph_t);
+		break;
 
 #if 0
-		case IPPROTO_AH:
-			nstask->l4_hlen = sizeof(ah_t);
-			break;
+	case IPPROTO_AH:
+		nstask->l4_hlen = sizeof(ah_t);
+		break;
 
-		case IPPROTO_ESP:
-			nstask->l4_hlen = sizeof(esp_t);
-			break;
+	case IPPROTO_ESP:
+		nstask->l4_hlen = sizeof(esp_t);
+		break;
 #endif
 
-		default:
-			break;
+	default:
+		break;
 	}
 
 	// invalid L4 Header length
@@ -253,10 +268,15 @@ int32_t parse_inet_protocol(ns_task_t *nstask)
 	}
 
 	nstask->l4_dlen = nstask->ip_dlen - nstask->l4_hlen;
-	nstask->l4_data = (char *)ns_raw(nstask->pkt) + nstask->l4_hlen;
+	nstask->l4_data = rte_pktmbuf_mtod_offset(skb, void *, nstask->ip_hlen + nstask->l4_hlen);
 
-	dbg(4, "Packet length info: ip_len=%d, ip_hlen=%d, ip_dlen=%d, l4_dlen=%d, l4_hlen=%d",
-			ns_iplen(nstask->pkt), nstask->ip_hlen, nstask->ip_dlen, nstask->l4_dlen, nstask->l4_hlen);
+	dbg(4, "Packet length info: pkt_len=%d, ip_hlen=%d, ip_dlen=%d, l4_hlen=%d, l4_dlen=%d",
+		dlen, nstask->ip_hlen, nstask->ip_dlen, nstask->l4_hlen, nstask->l4_dlen);
+
+#if 0
+	if (nstask->l4_dlen) {
+		print_payload("TCP Payload", (const uint8_t *)nstask->l4_data, nstask->l4_dlen);
+	}
 #endif
 
 	return NS_ACCEPT;
@@ -265,14 +285,15 @@ int32_t parse_inet_protocol(ns_task_t *nstask)
 int32_t init_task_info(ns_task_t *nstask)
 {
 	int32_t ret = NS_ACCEPT;
-#if 0
-	skb_t *skb = nstask->pkt;
+	skb_t *skb;
 	iph_t *iph;
 	int32_t pkt_len;
 
 	ENT_FUNC(3);
 
-	iph = ns_iph(nstask->pkt);
+	skb = ns_get_skb(nstask);
+	iph = ns_iph(skb);
+
 	// 패킷 사이즈를 검사할 크기
 	pkt_len = nstask->ip_hlen;
 
@@ -286,7 +307,7 @@ int32_t init_task_info(ns_task_t *nstask)
 		dbg(5, "build_skey for icmp error");
 
 		// icmp error 패킷에는 원본 패킷이 실려 있다.
-		iph = (iph_t *)(ns_raw(nstask->pkt) + sizeof(ich_t));
+		iph = (iph_t *)(nstask->l4_data + sizeof(icmph_t));
 
 		DUMP_PKT(4, iph, nstask->skey.inic);
 
@@ -315,34 +336,11 @@ int32_t init_task_info(ns_task_t *nstask)
 		//DBGKEY(0, NORMAL_KEY, &nstask->skey);
 	}
 
-#warning "Fixme: Testing code"
-	// FIXME: for Testing 
-	if (1) {
-		switch (iph->next_proto_id) {
-		case IPPROTO_TCP:
-			if (nstask->skey.sp == 22 || nstask->skey.dp == 22) {
-				return NS_STOP;
-			}
-			break;
-
-		case IPPROTO_UDP:
-			return NS_STOP;
-			break;
-
-		case IPPROTO_ICMP:
-			break;
-
-		default:
-			break;
-		}
-
-	}
-
 	if (ret != 0) {
 		// some error
 		ret = NS_DROP;
 	}
-	else if (!pskb_may_pull(skb, pkt_len)) {
+	else if (mbuf_may_pull(skb, pkt_len) != 0) {
 		ns_err("Abnormal sized packet: SRC=" IP_FMT " DST=" IP_FMT " PROTO=%d hsize=%d dsize=%d",
 				IPN(iph->src_addr), IPN(iph->dst_addr), iph->next_proto_id, nstask->ip_hlen, 0);
 		ret = NS_ACCEPT;
@@ -352,7 +350,6 @@ int32_t init_task_info(ns_task_t *nstask)
 	}
 
 	DBGKEY(4, SKEY, &nstask->skey);
-#endif
 
 	return ret;
 }
@@ -364,8 +361,8 @@ uint16_t parse_ip_options(iph_t* iph)
 	int32_t    	optsdone = 0;
 	int32_t    	olen;
 	uint16_t  	ip_opt_flags = 0;
-#if 0
-	optslen = iph->ihl * 4 - sizeof(iph_t);
+
+	optslen = iph->version_ihl * 4 - sizeof(iph_t);
 	if (optslen < 1)
 		return 0;
 
@@ -471,10 +468,50 @@ uint16_t parse_ip_options(iph_t* iph)
 			dbg(0, "bogus variable-length IP option");
 		}
 	}
-#endif
 
 	return ip_opt_flags;
 }
+
+/*
+ *	TCP option
+ */
+
+#define TCPOPT_NOP		1	/* Padding */
+#define TCPOPT_EOL		0	/* End of options */
+#define TCPOPT_MSS		2	/* Segment size negotiating */
+#define TCPOPT_WINDOW		3	/* Window scaling */
+#define TCPOPT_SACK_PERM        4       /* SACK Permitted */
+#define TCPOPT_SACK             5       /* SACK Block */
+#define TCPOPT_TIMESTAMP	8	/* Better RTT estimations/PAWS */
+#define TCPOPT_MD5SIG		19	/* MD5 Signature (RFC2385) */
+#define TCPOPT_FASTOPEN		34	/* Fast open (RFC7413) */
+#define TCPOPT_EXP		254	/* Experimental */
+/* Magic number to be after the option value for sharing TCP
+ * experimental options. See draft-ietf-tcpm-experimental-options-00.txt
+ */
+#define TCPOPT_FASTOPEN_MAGIC	0xF989
+
+/*
+ *     TCP option lengths
+ */
+
+#define TCPOLEN_MSS            4
+#define TCPOLEN_WINDOW         3
+#define TCPOLEN_SACK_PERM      2
+#define TCPOLEN_TIMESTAMP      10
+#define TCPOLEN_MD5SIG         18
+#define TCPOLEN_FASTOPEN_BASE  2
+#define TCPOLEN_EXP_FASTOPEN_BASE  4
+
+/* But this is what stacks really send out. */
+#define TCPOLEN_TSTAMP_ALIGNED		12
+#define TCPOLEN_WSCALE_ALIGNED		4
+#define TCPOLEN_SACKPERM_ALIGNED	4
+#define TCPOLEN_SACK_BASE		2
+#define TCPOLEN_SACK_BASE_ALIGNED	4
+#define TCPOLEN_SACK_PERBLOCK		8
+#define TCPOLEN_MD5SIG_ALIGNED		20
+#define TCPOLEN_MSS_ALIGNED		4
 
 int32_t parse_tcp_options(ns_task_t* nstask)
 {
@@ -483,12 +520,16 @@ int32_t parse_tcp_options(ns_task_t* nstask)
 	int32_t length = nstask->l4_hlen - sizeof(struct tcphdr);
 	int32_t opsize, i;
 	uint32_t tmp;
+	skb_t *skb;
 	topt_t *topt = (topt_t*)&nstask->topt;
 
 	if (length < 1)
 		return 0;
-#if 0
-	ptr = skb_header_pointer(nstask->pkt, nstask->ip_hlen + sizeof(struct tcphdr), length, buff);
+
+	skb = ns_get_skb(nstask);
+
+	ptr = mbuf_header_pointer(skb, nstask->ip_hlen + nstask->l4_hlen, length, buff);
+
 	if (ptr == NULL)
 		return -1;
 
@@ -535,18 +576,20 @@ int32_t parse_tcp_options(ns_task_t* nstask)
 
 			case TCPOPT_MSS:
 				if(opsize == TCPOLEN_MSS) {
-					topt->mss = ntohs(get_unaligned((__u16 *)ptr));
+					//topt->mss = ntohs(get_unaligned((__u16 *)ptr));
+					topt->mss = ntohs(*ptr);
 					topt->flags |= TOPT_FLAG_MSS;
 				}
 				break;
 
 			case TCPOPT_SACK:
 				if ( (opsize >= (TCPOLEN_SACK_BASE + TCPOLEN_SACK_PERBLOCK))
-					&& !((opsize - TCPOLEN_SACK_BASE) % TCPOLEN_SACK_PERBLOCK)) {
+					 && !((opsize - TCPOLEN_SACK_BASE) % TCPOLEN_SACK_PERBLOCK)) {
 
 					for (i = 0; i < (opsize - TCPOLEN_SACK_BASE); i += TCPOLEN_SACK_PERBLOCK) {
 						tmp = ntohl(*((u_int32_t *)(ptr+i)+1));
 
+#define after(a1, a2) (a2-a1) < 0
 						if (after(tmp, topt->sack)) {
 							topt->flags |= TOPT_FLAG_SACK;
 							topt->sack = tmp;
@@ -573,7 +616,9 @@ int32_t parse_tcp_options(ns_task_t* nstask)
 			length -= opsize;
 		}
 	}
-#endif
+
+	dbg(6, "TCP Options: td_sclae=%d, flags=0x%x, mss=%d, sack=%d, tsval=%d \n", 
+		topt->td_scale, topt->flags, topt->mss, topt->sack, topt->tsval);
 
 	return 0;
 }

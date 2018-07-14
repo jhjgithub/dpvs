@@ -58,7 +58,7 @@ nscmd_module_t nscmd_module_list[] =
 	CMD_ITEM(nat,        NAT,         nat_main,          NULL,               NULL,          NULL),
 	CMD_ITEM(arpp,       ARPP,        NULL,          	arpp_init,           arpp_clean,    NULL),
 #endif
-	CMD_ITEM(tinfo,      TI,         init_task_info,     NULL,               NULL,           NULL),
+	CMD_ITEM(taskinfo,   TI,         init_task_info,     NULL,               NULL,           NULL),
 	CMD_ITEM(inet,       IN,         parse_inet_protocol,NULL,               NULL,           NULL),
 
 	[NS_CMD_MAX] = {.name=NULL, .short_name= NULL, .run=NULL, .init=NULL, .clean=NULL, .age=NULL}
@@ -263,7 +263,7 @@ void nscmd_setup_common_cmds(ns_task_t *nstask)
 	append_cmd(nstask, inet);
 
 	// call init_task_info()
-	append_cmd(nstask, tinfo);
+	append_cmd(nstask, taskinfo);
 
 #if 0
 	// anomaly in IPS

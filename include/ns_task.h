@@ -19,17 +19,23 @@
 //#include <netshield_hook.h>
 #include <skey.h>
 
-static inline void* ns_get_task(struct rte_mbuf *md)
+static inline void* ns_get_task(skb_t *skb)
 {
-	if (md->priv_size == 0)
+	if (skb->priv_size == 0)
 		return NULL;
 
-	return RTE_PTR_ADD(md, sizeof(struct rte_mbuf));
+	return RTE_PTR_ADD(skb, sizeof(struct rte_mbuf));
 }
 
-static inline struct rte_mbuf* ns_get_mbuf(void *task)
+static inline skb_t* ns_get_skb(void *task)
 {
-	return (struct rte_mbuf*)RTE_PTR_SUB(task, sizeof(struct rte_mbuf));
+	return (skb_t*)RTE_PTR_SUB(task, sizeof(struct rte_mbuf));
+}
+
+static inline iph_t* ns_get_iph(void *task)
+{
+	skb_t *skb = ns_get_skb(task);
+	return ip4_hdr(skb);
 }
 
 struct session_s;
@@ -67,12 +73,10 @@ typedef struct ns_task_s {
 
 	uint32_t	flags;  // 4
 
-#if 0
 	mpolicy_t 	mp_fw; 	// 16
 	mpolicy_t 	mp_nat; // 16
 
 	struct session_s *si;// 8
-#endif
 	int 		hook;
     void 		*in_port;
 	void 		*out_port;

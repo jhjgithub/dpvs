@@ -19,7 +19,7 @@
 
 uint32_t netshield_running = 0;
 
-DECLARE_DBG_LEVEL(3);
+DECLARE_DBG_LEVEL(9);
 
 //////////////////////////////////////////////////////
 
@@ -129,7 +129,7 @@ int netshield_main(ns_task_t *nstask)
 	int ret = NS_DROP;
 	skb_t *skb;
 
-	skb = ns_get_mbuf(nstask);
+	skb = ns_get_skb(nstask);
 	iph = ip4_hdr(skb);
 
 	nscmd_setup_cmds(nstask, iph->next_proto_id);

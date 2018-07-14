@@ -165,33 +165,45 @@ typedef uint32_t 			ips_rid_t;	///< for IPS Rule ID
 typedef uint16_t 			ips_app_gid_t;	///< for IPS Appliction Group ID
 typedef uint16_t 			ips_att_gid_t;	///< for IPS Attack Group ID
 typedef uint32_t 			ipolicy_id_t;	///< for IPS Policy ID
-typedef __int128_t 			int128_t;
-typedef __uint128_t 		uint128_t;
 #endif
 
 #define ns_iph(__skb)	ip4_hdr(__skb)
 
+typedef __int128_t 			int128_t;
+typedef __uint128_t 		uint128_t;
 typedef uint32_t 			nic_id_t;
 typedef struct ipv4_hdr 	iph_t;
-typedef struct tcphdr 		tph_t;
-typedef struct udphdr 		uph_t;
-typedef struct icmphdr 		ich_t;
+typedef struct ipv6_hdr     iph6_t;
+typedef struct tcphdr 		tcph_t;
+typedef struct udphdr 		udph_t;
+typedef struct icmphdr 		icmph_t;
+typedef struct list_head  	list_head_t;
 
 typedef uint32_t 			ip4_t; 		///< for IPv4 address
+typedef __uint128_t 		ip6_t;
 typedef struct rte_mbuf	 	skb_t;
+typedef rte_spinlock_t 		spinlock_t;
+typedef rte_atomic32_t 	  	atomic_t;
+typedef uint8_t 			ns_node_id_t; 	///< for NetShield Node ID
 
+
+#if 0
 typedef union _ip6_t {
 	uint8_t		a8[16];
 	uint16_t	a16[8];
 	uint32_t	a32[4];
 	uint64_t	a64[2]; 	// 0: high part, 1: low part
-
 } ip6_t;
+#endif
 
+#if 0
 typedef union {
 	ip4_t v4;
 	ip6_t v6;
 } ip_t;
+#else
+typedef __uint128_t 		ip_t;
+#endif
 
 
 #ifndef ETH_ALEN
