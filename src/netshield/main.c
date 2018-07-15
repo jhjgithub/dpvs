@@ -10,11 +10,11 @@
 #include "ipv4_frag.h"
 #include "neigh.h"
 #include "icmp.h"
-#include "ns_type_defs.h"
+#include "ns_typedefs.h"
 #include "ns_dbg.h"
 #include "netshield.h"
 #include "ns_task.h"
-#include "ns_cmds.h"
+#include "cmds.h"
 
 
 uint32_t netshield_running = 0;
@@ -100,7 +100,11 @@ int netshield_init(void)
 {
 	int ret;
 
+	ns_log("Starting NetShield");
+
 	ret = ipv4_register_hooks(nshook_ops, 2);
+
+	ret = nscmd_init_module();
 
 	if (ret == EDPVS_OK) {
 		ns_log("Init NetShield success");
@@ -109,7 +113,7 @@ int netshield_init(void)
 		ns_warn("Init NetShield failed: ret=%d", ret);
 	}
 
-	return EDPVS_OK;
+	return ret;
 }
 
 int netshield_term(void)
@@ -117,6 +121,8 @@ int netshield_term(void)
 	int ret;
 
 	ns_log("Stop Netshield");
+
+	nscmd_clean_module();
 
 	ret = ipv4_unregister_hooks(nshook_ops, 2);
 

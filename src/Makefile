@@ -40,6 +40,7 @@ include $(SRCDIR)/dpdk.mk
 include $(SRCDIR)/config.mk
 
 INCDIRS += -I $(SRCDIR)/../include
+INCDIRS += -I $(SRCDIR)/netshield/include
 
 # for dpvs main program.
 CFLAGS += -D __DPVS__ -DDPVS_VERSION=\"$(VERSION_STRING)\" -DDPVS_BUILD_DATE=\"$(DATE_STRING)\"

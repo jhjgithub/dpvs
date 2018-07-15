@@ -16,8 +16,8 @@
 #include <tcp_state.h>
 #endif
 
-#include <ns_type_defs.h>
-#include <ns_macro.h>
+#include <ns_typedefs.h>
+#include <macros.h>
 #include <ns_malloc.h>
 #include "ns_task.h"
 #include <ns_dbg.h>
@@ -26,7 +26,7 @@
 #include <action.h>
 #include <pmgr.h>
 #include <options.h>
-#include <ns_cmds.h>
+#include <cmds.h>
 
 
 //////////////////////////////////////////////////////
@@ -34,7 +34,7 @@
 smgr_t		*g_smgr; 
 extern struct kmem_cache	*netshield_scache;
 
-DECLARE_DBG_LEVEL(2);
+DECLARE_DBG_LEVEL(9);
 
 //////////////////////////////////////////////////////
 
@@ -468,6 +468,7 @@ int32_t smgr_init(void)
 
 	ENT_FUNC(3);
 
+	dbg(3, "Init Session Manager");
 
 	smgr = (smgr_t *)ns_malloc_kz(sizeof(smgr_t));
 	ns_mem_assert(smgr, "session manager", return -1);
@@ -505,6 +506,8 @@ void smgr_clean(void)
 
 	ENT_FUNC(3);
 
+	dbg(3, "Clean Session Manager");
+
 	list_for_each_entry_safe(si, n, &g_smgr->all_slist, alist) {
 		smgr_delete_session(si, 0);
 	}
@@ -534,7 +537,7 @@ int32_t smgr_fast_main(ns_task_t *nstask)
 	if (nstask->si == NULL) {
 		dbg(0, "-----+ Begin Slow Path +-----");
 		// call pmgr_main()
-		append_cmd(nstask, pmgr);
+		//append_cmd(nstask, pmgr);
 	}
 	else {
 		dbg(0, "++++++ Begin Fast Path ++++++");
@@ -558,7 +561,7 @@ int32_t smgr_post_main(ns_task_t *nstask)
 
 	if (si->action & ACT_NAT) {
 		// call nat_main()
-		append_cmd(nstask, nat);
+		//append_cmd(nstask, nat);
 	}
 
 	return NS_ACCEPT;

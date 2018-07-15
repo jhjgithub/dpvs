@@ -7,7 +7,7 @@
 #include <linux/icmp.h>
 #include <linux/icmpv6.h>
 #include "dpdk.h"
-#include "ns_type_defs.h"
+#include "ns_typedefs.h"
 
 static void print_hex_ascii_line(const uint8_t *payload, int len, int offset)
 {

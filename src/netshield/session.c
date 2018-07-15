@@ -18,8 +18,8 @@
 #include <tcp_state.h>
 #endif
 
-#include <ns_type_defs.h>
-#include <ns_macro.h>
+#include <ns_typedefs.h>
+#include <macros.h>
 #include <ns_malloc.h>
 #include "ns_task.h"
 #include <ns_dbg.h>
@@ -43,7 +43,6 @@
 //////////////////////////////////////////////////////
 
 DECLARE_DBG_LEVEL(2);
-extern struct kmem_cache	*netshield_scache;
 
 //////////////////////////////////////////////////////
 
@@ -158,7 +157,7 @@ void session_free(session_t *si)
 {
 	dbg(5, "Free Session: 0x%p", si);
 
-	ns_cache_free(netshield_scache, si);
+	//ns_cache_free(netshield_scache, si);
 }
 
 

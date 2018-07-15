@@ -15,8 +15,8 @@
 #include <commands.h>
 #endif
 
-#include <ns_type_defs.h>
-#include <ns_macro.h>
+#include <ns_typedefs.h>
+#include <macros.h>
 #include <ns_malloc.h>
 #include "ns_task.h"
 #include <ns_dbg.h>

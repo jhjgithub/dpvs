@@ -14,8 +14,8 @@
 #endif
 
 #include <options.h>
-#include "ns_type_defs.h"
-#include "ns_macro.h"
+#include "ns_typedefs.h"
+#include "macros.h"
 #include "ns_dbg.h"
 
 

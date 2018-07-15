@@ -6,11 +6,11 @@
 #include <linux/icmp.h>
 #include <linux/icmpv6.h>
 #include "dpdk.h"
-#include "ns_type_defs.h"
-#include "ns_macro.h"
+#include "ns_typedefs.h"
+#include "macros.h"
 #include "netshield.h"
 #include "ns_task.h"
-#include "ns_cmds.h"
+#include "cmds.h"
 #include "ns_dbg.h"
 #include "dump.h"
 

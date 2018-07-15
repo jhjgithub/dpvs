@@ -38,7 +38,7 @@
 #include "timer.h"
 #include "parser/parser.h"
 #include "neigh.h"
-#include "ns_def.h"
+#include "ns_typedefs.h"
 
 #include <rte_arp.h>
 #include <netinet/in.h>
@@ -3869,7 +3869,7 @@ static int netif_loop(void *dummy)
 
     try_isol_rxq_lcore_loop();
     if (0 == lcore_conf[lcore2index[cid]].nports) {
-        RTE_LOG(INFO, NETIF, "[%s] Lcore %d has nothing to do.\n", __func__, cid);
+        //RTE_LOG(INFO, NETIF, "[%s] Lcore %d has nothing to do.\n", __func__, cid);
         return EDPVS_IDLE;
     }
 

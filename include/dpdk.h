@@ -58,6 +58,7 @@
 //#include <rte_log.h>
 #include "mbuf.h"
 
+// for Redefine rte_log()
 #include "ns_dbg.h"
 
 typedef uint8_t lcoreid_t;

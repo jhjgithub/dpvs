@@ -90,6 +90,7 @@ typedef struct ns_task_s {
 //#define NS_TASK_SIZE 		256  	// 임시로 크게 정의한다.
 //#define NS_TASK_SIZE 		120 	// IPv4:92byte, IPv6:120 bytes
 
+//#define NS_TASK_SIZE 256
 
 
 #endif

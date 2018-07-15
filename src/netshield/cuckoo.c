@@ -8,7 +8,7 @@
 #include <typedefs.h>
 #include <log.h>
 #endif
-#include <ns_macro.h>
+#include <macros.h>
 #include <ns_malloc.h>
 #include <ns_dbg.h>
 #include <cuckoo.h>

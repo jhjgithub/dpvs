@@ -210,4 +210,6 @@ typedef __uint128_t 		ip_t;
 #define ETH_ALEN 			6
 #endif
 
+#define NS_TASK_SIZE 256
+
 #endif

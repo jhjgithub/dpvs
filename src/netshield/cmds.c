@@ -14,16 +14,16 @@
 #include <options.h>
 #include <khypersplit.h>
 #include <pmgr.h>
-#include <smgr.h>
 #include <ns_ioctl.h>
 #include <nat.h>
 #include <arp_proxy.h>
 #endif
 
-#include "ns_type_defs.h"
-#include <ns_macro.h>
-#include "ns_cmds.h"
+#include "ns_typedefs.h"
+#include "macros.h"
+#include "cmds.h"
 #include "ns_dbg.h"
+#include "smgr.h"
 
 
 //////////////////////////////////////////////////////
@@ -51,13 +51,13 @@ nscmd_module_t nscmd_module_list[] =
 	CMD_ITEM(nsdev,      NSDEV,      NULL,              nsdev_init,         nsdev_clean,    NULL),
 	CMD_ITEM(timer,      TIMER,      NULL,              nstimer_init,       nstimer_clean,  nstimer_ageing),
 	CMD_ITEM(frag,       FR,         frag_main,          NULL,               NULL,           NULL),
-	CMD_ITEM(smgr_fast,	SMGR_FAST, 	smgr_fast_main,  	smgr_init,           smgr_clean,     NULL),
 	CMD_ITEM(smgr_slow, SMGR_SLOW,  smgr_slow_main,    	NULL,    		       NULL,     NULL),
-	CMD_ITEM(smgr_timeout,SMGR_TIMEOUT,smgr_timeout,    NULL,               NULL,           NULL),
 	CMD_ITEM(pmgr, 		PMGR_MAIN, 	pmgr_main,         pmgr_init,           pmgr_clean,     NULL),
-	CMD_ITEM(nat,        NAT,         nat_main,          NULL,               NULL,          NULL),
 	CMD_ITEM(arpp,       ARPP,        NULL,          	arpp_init,           arpp_clean,    NULL),
+	CMD_ITEM(nat,        NAT,         nat_main,          NULL,               NULL,          NULL),
 #endif
+	CMD_ITEM(smgr_timeout,SMGR_TIMEOUT,smgr_timeout,    NULL,               NULL,           NULL),
+	CMD_ITEM(smgr_fast,	SMGR_FAST, 	smgr_fast_main,  	smgr_init,           smgr_clean,     NULL),
 	CMD_ITEM(taskinfo,   TI,         init_task_info,     NULL,               NULL,           NULL),
 	CMD_ITEM(inet,       IN,         parse_inet_protocol,NULL,               NULL,           NULL),
 
@@ -274,7 +274,7 @@ void nscmd_setup_common_cmds(ns_task_t *nstask)
 #endif
 
 	// call smgr_fast_main()
-	//append_cmd(nstask, smgr_fast);
+	append_cmd(nstask, smgr_fast);
 }
 
 void nscmd_setup_cmds(ns_task_t *nstask, uint8_t protocol)

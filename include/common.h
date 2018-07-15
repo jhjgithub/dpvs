@@ -22,7 +22,6 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <linux/if_ether.h>
-#include "ns_dbg.h"
 
 
 #ifndef NELEMS
