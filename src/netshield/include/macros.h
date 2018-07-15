@@ -53,46 +53,6 @@
 #define IS_LOCALOUT(u)			(u->flags & NST_FLAG_HOOK_LOCAL_OUT)
 #define IS_DST_VPN(dst)			((dst)->obsolete == -1)
 
-///////////////////////////////////////////
-// 
-/* INFO: LOCK은 반드시 아래와 같은 스티일로 코딩 해야 한다.
-*
-*  ns_rw_lock_irq() {
-*	 something(...)
-*  } ns_rw_unlock_irq();
-*
-*/
-// 데이터를 write를 해야 하는 경우 사용
-// _irq는 soft-irq(Bottom-Half) 상태에서 사용
-#define	ns_rw_trylock_irq(l) rte_spinlock_trylock(l)
-#define	ns_rw_lock_irq(l) 	rte_spinlock_lock(l);
-#define	ns_rw_unlock_irq(l) rte_spinlock_unlock(l);
-#define	ns_rw_lock(l)		rte_spinlock_lock(l);
-#define	ns_rw_unlock(l)		rte_spinlock_unlock(l);
-
-// 데이터를 읽기만 하는 경우 사용
-#define	ns_rd_lock_irq()	rcu_read_lock_bh();
-#define	ns_rd_unlock_irq() 	rcu_read_unlock_bh();
-#define	ns_rd_lock()		rcu_read_lock();
-#define	ns_rd_unlock()		rcu_read_unlock();
-
-#define ns_init_lock(l) 	rte_spinlock_init(l)
-///////////////////////////////////////////////////////////
-
-#define IS_SYN_ONLY(t) 		(t->syn && !(t->rst|t->fin|t->ack))
-#define IS_ACK_ONLY(t) 		(t->ack && !(t->rst|t->fin|t->syn))
-#define IS_SYN_ACK(t) 		(t->syn && t->ack && !(t->rst|t->fin))
-
-#define KER_VER_LT(maj,mid,min) (LINUX_VERSION_CODE <  KERNEL_VERSION(maj,mid,min))
-#define KER_VER_LE(maj,mid,min) (LINUX_VERSION_CODE <= KERNEL_VERSION(maj,mid,min))
-#define KER_VER_GT(maj,mid,min) (LINUX_VERSION_CODE > KERNEL_VERSION(maj,mid,min))
-
-#define CMP_MAC_HI(mac1, mac2) 	(*(uint32_t*)mac1 == *(uint32_t*)mac2)
-#define CMP_MAC_LO(mac1, mac2) 	(*(uint16_t*)&mac1[4] == *(uint16_t*)&mac2[4])
-#define CMP_MAC(mac1, mac2) (CMP_MAC_HI(mac1, mac2) && CMP_MAC_LO(mac1, mac2))
-#define CTL_TAB_ITEM(n, d, l, m, c, h) {.procname=n, .data=d, .maxlen=l, .mode=m, .child=c, .proc_handler=h}
-
-#define ns_copy_ipv6(d,s) 		memcpy((d), (s), 16)
 #define PROTO(nstask) 			(nstask)->key.proto
 
 

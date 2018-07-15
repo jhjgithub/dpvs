@@ -49,7 +49,7 @@ int32_t nstimer_get_lifetime(uint32_t cur_time, uint32_t timeout, uint32_t times
 
 uint32_t smgr_get_next_sid(void)
 {
-	return (uint32_t)rte_atomic32_add_return(&g_smgr->last_id, 1);
+	return (uint32_t)atomic_inc_return(&g_smgr->last_id);
 }
 
 void smgr_remove_alist(smgr_t *smgr, session_t *si)
@@ -58,8 +58,8 @@ void smgr_remove_alist(smgr_t *smgr, session_t *si)
 		return;
 	}
 
-	rte_atomic32_dec(&smgr->all);
-	rte_atomic32_dec(&smgr->mine);
+	atomic_dec(&smgr->all);
+	atomic_dec(&smgr->mine);
 
 	ns_rw_lock_irq(&smgr->smgr_lock) {
 		list_del(&si->alist);
@@ -81,8 +81,8 @@ void smgr_add_alist(smgr_t *smgr, session_t* si)
 		return;
 	}
 
-	rte_atomic32_inc(&smgr->all);
-	rte_atomic32_inc(&smgr->mine);
+	atomic_inc(&smgr->all);
+	atomic_inc(&smgr->mine);
 
 	ns_rw_lock_irq(&smgr->smgr_lock) {
 		list_add_tail(&si->alist, &g_smgr->all_slist);
@@ -193,7 +193,7 @@ int32_t smgr_setup_session_info(char* arg)
 
 	ENT_FUNC(3);
 
-	max_cnt = rte_atomic32_read(&g_smgr->all);
+	max_cnt = atomic_read(&g_smgr->all);
 	scnt = 0;
 
 	dbg(5, "Current session: %u", max_cnt);
@@ -299,6 +299,7 @@ int32_t smgr_slow_main(ns_task_t *nstask)
 	}
 
 #endif
+
 	si = session_alloc();
 	if (si == NULL) {
 		dbg(5, "Cannot add a new session");
@@ -447,16 +448,12 @@ int32_t smgr_timeout(ns_task_t *nstask)
 		timeout = si->timeout == -1 ? GET_OPT_VALUE(timeout_unknown) : si->timeout;
 	}
 
-#if 0
 	tm_change = nstimer_change_timeout(&si->timer, timeout);
-#else
-	tm_change = 0;
-#endif
 
 	// ftpdata has to update its control session
 	if (parent && tm_change) {
 		parent_timeout = si->timeout == -1 ? GET_OPT_VALUE(timeout_tcp) : si->timeout;
-		//nstimer_change_timeout(&parent->timer, parent_timeout);
+		nstimer_change_timeout(&parent->timer, parent_timeout);
 	}
 
 	return NS_ACCEPT;

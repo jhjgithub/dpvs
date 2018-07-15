@@ -91,7 +91,8 @@ endef
 $(OBJDIR)/%.o: %.c ./config.mk
 	$(QUITE)$(CC) $(CFLAGS) -MM -MT $@ -MF $(patsubst %.o,%.d,$@) $<
 	$(QUITE)$(CC) -DMY_DBG_NAME=$(basename $(notdir $<)) -c $(CFLAGS) $< -o $@
-	$(QUITE)echo "  $(notdir $@)"
+#	$(QUITE)echo "  $(notdir $@)"
+	$(QUITE)echo "  $@"
 
 clean:
 	rm -rf $(OBJDIR)

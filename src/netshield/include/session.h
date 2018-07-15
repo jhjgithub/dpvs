@@ -2,7 +2,7 @@
 #define __SESSION_H__
 
 #include <skey.h>
-//#include <timer.h>
+#include <ns_timer.h>
 #include <nat.h>
 
 // NAT sequence number modifications for FTP Proxy
@@ -112,7 +112,7 @@ typedef struct session_s{
 	mpolicy_t 	mp_nat;
 
 	//nstimer_t 	timer  ____cacheline_aligned_in_smp;
-	//nstimer_t 	timer;
+	nstimer_t 	timer;
 
 } __attribute__((packed, aligned(4))) session_t;
 

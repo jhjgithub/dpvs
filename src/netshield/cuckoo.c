@@ -5,9 +5,9 @@
 #if 0
 #include <include_os.h>
 
-#include <typedefs.h>
 #include <log.h>
 #endif
+#include <ns_typedefs.h>
 #include <macros.h>
 #include <ns_malloc.h>
 #include <ns_dbg.h>

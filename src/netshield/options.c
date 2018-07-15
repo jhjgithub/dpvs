@@ -59,7 +59,7 @@ option_t ns_options [] = {
     // 기능 항목 끝
 
     // 2. Define options
-    OPT_ITEM(age_interval,      1,          1,      5,      O_W,        PROC_MIN_MAX),
+    OPT_ITEM(age_interval,      1,          1,      100,    O_W,        PROC_MIN_MAX),
     OPT_ITEM(bl_btime,          30,         1,      86400,  O_W,        PROC_MIN_MAX),
     OPT_ITEM(bl_log,            1,          0,      2,      O_W,        PROC_MIN_MAX),
     OPT_ITEM(bl_log_param,      100,        5,      65535,  O_W,        PROC_MIN_MAX),

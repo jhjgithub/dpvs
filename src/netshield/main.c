@@ -57,17 +57,17 @@ int nshook_main(void *priv, struct rte_mbuf *mbuf, const struct inet_hook_state 
 
 	switch (state->hook) {
 	case INET_HOOK_PRE_ROUTING:
-		dbg(3, "Do PRE_ROUTING Hook");
+		//dbg(3, "Do PRE_ROUTING Hook");
 		ret = netshield_main(nstask);
 		break;
 
 	case INET_HOOK_LOCAL_OUT:
-		dbg(3, "Do LOCAL_OUT Hook");
+		//dbg(3, "Do LOCAL_OUT Hook");
 		ret = netshield_main(nstask);
 		break;
 
 	case INET_HOOK_POST_ROUTING:
-		dbg(3, "Do POST_ROUTING Hook");
+		//dbg(3, "Do POST_ROUTING Hook");
 		ret = INET_ACCEPT;
 		break;
 

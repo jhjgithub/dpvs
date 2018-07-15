@@ -222,6 +222,7 @@ int main(int argc, char *argv[])
     if ((err = inet_init()) != EDPVS_OK)
         rte_exit(EXIT_FAILURE, "Fail to init inet: %s\n", dpvs_strerror(err));
 
+#if 0
     if ((err = sa_pool_init()) != EDPVS_OK)
         rte_exit(EXIT_FAILURE, "Fail to init sa_pool: %s\n", dpvs_strerror(err));
 
@@ -230,6 +231,7 @@ int main(int argc, char *argv[])
 
     if ((err = dp_vs_init()) != EDPVS_OK)
         rte_exit(EXIT_FAILURE, "Fail to init ipvs: %s\n", dpvs_strerror(err));
+#endif
 
     if ((err = netif_ctrl_init()) != EDPVS_OK)
         rte_exit(EXIT_FAILURE, "Fail to init netif_ctrl: %s\n",
@@ -306,12 +308,14 @@ end:
     if ((err = netif_ctrl_term()) !=0 )
         rte_exit(EXIT_FAILURE, "Fail to term netif_ctrl: %s\n",
                  dpvs_strerror(err));
+#if 0
     if ((err = dp_vs_term()) != EDPVS_OK)
         RTE_LOG(ERR, DPVS, "Fail to term ipvs: %s\n", dpvs_strerror(err));
     if ((err = ip_tunnel_term()) != EDPVS_OK)
         RTE_LOG(ERR, DPVS, "Fail to term tunnel: %s\n", dpvs_strerror(err));
     if ((err = sa_pool_term()) != EDPVS_OK)
         RTE_LOG(ERR, DPVS, "Fail to term sa_pool: %s\n", dpvs_strerror(err));
+#endif
     if ((err = netshield_term()) != EDPVS_OK) {
         RTE_LOG(ERR, DPVS, "Fail to term NetShield: %s\n", dpvs_strerror(err));
 	}

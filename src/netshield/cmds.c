@@ -1,17 +1,16 @@
 #include <stdio.h>
+#include <stdint.h>
 #include "dpdk.h"
 
 #if 0
 #include <include_os.h>
 
 #include <typedefs.h>
-#include <session.h>
 #include <log.h>
 #include <extern.h>
 #include <version.h>
 #include <misc.h>
 #include <inline.h>
-#include <options.h>
 #include <khypersplit.h>
 #include <pmgr.h>
 #include <ns_ioctl.h>
@@ -19,16 +18,19 @@
 #include <arp_proxy.h>
 #endif
 
-#include "ns_typedefs.h"
-#include "macros.h"
-#include "cmds.h"
-#include "ns_dbg.h"
-#include "smgr.h"
+#include <ns_typedefs.h>
+#include <macros.h>
+#include <cmds.h>
+#include <ns_dbg.h>
+#include <session.h>
+#include <smgr.h>
+#include <options.h>
 
 
 //////////////////////////////////////////////////////
 
-//struct timer_list	g_kernel_timer;
+struct dpvs_timer g_ns_timer;
+
 DECLARE_DBG_LEVEL(2);
 
 //////////////////////////////////////////////////////
@@ -49,17 +51,18 @@ nscmd_module_t nscmd_module_list[] =
 #if 0
 	//  name            short_name  run                 init                clean           age
 	CMD_ITEM(nsdev,      NSDEV,      NULL,              nsdev_init,         nsdev_clean,    NULL),
-	CMD_ITEM(timer,      TIMER,      NULL,              nstimer_init,       nstimer_clean,  nstimer_ageing),
 	CMD_ITEM(frag,       FR,         frag_main,          NULL,               NULL,           NULL),
 	CMD_ITEM(smgr_slow, SMGR_SLOW,  smgr_slow_main,    	NULL,    		       NULL,     NULL),
 	CMD_ITEM(pmgr, 		PMGR_MAIN, 	pmgr_main,         pmgr_init,           pmgr_clean,     NULL),
 	CMD_ITEM(arpp,       ARPP,        NULL,          	arpp_init,           arpp_clean,    NULL),
 	CMD_ITEM(nat,        NAT,         nat_main,          NULL,               NULL,          NULL),
 #endif
+
+	CMD_ITEM(timer,     TIMER,      NULL,              	nstimer_init,       nstimer_clean,  nstimer_ageing),
 	CMD_ITEM(smgr_timeout,SMGR_TIMEOUT,smgr_timeout,    NULL,               NULL,           NULL),
-	CMD_ITEM(smgr_fast,	SMGR_FAST, 	smgr_fast_main,  	smgr_init,           smgr_clean,     NULL),
-	CMD_ITEM(taskinfo,   TI,         init_task_info,     NULL,               NULL,           NULL),
-	CMD_ITEM(inet,       IN,         parse_inet_protocol,NULL,               NULL,           NULL),
+	CMD_ITEM(smgr_fast,	SMGR_FAST, 	smgr_fast_main,  	smgr_init,          smgr_clean,     NULL),
+	CMD_ITEM(taskinfo,   TI,        init_task_info,     NULL,               NULL,           NULL),
+	CMD_ITEM(inet,       IN,        parse_inet_protocol,NULL,             	NULL,           NULL),
 
 	[NS_CMD_MAX] = {.name=NULL, .short_name= NULL, .run=NULL, .init=NULL, .clean=NULL, .age=NULL}
 
@@ -122,13 +125,12 @@ nscmd_module_t* nscmd_pop(nscmd_t *c)
 
 ////////////////////////////////////
 
-void nscmd_callback_timer(unsigned long data)
+int nscmd_callback_timer(void* arg)
 {
 	int32_t i;
 	uint32_t t;
 	nscmd_module_t *c;
 
-#if 0
 	// 기준 시간을 증가 한다.
 	t = nstimer_inc_time();
 
@@ -145,9 +147,13 @@ void nscmd_callback_timer(unsigned long data)
 	if (t > 60 && (t % 60) == 0) {
 	}
 
-	g_kernel_timer.expires = jiffies + (HZ * GET_OPT_VALUE(age_interval));
-	add_timer(&g_kernel_timer);
-#endif
+    struct timeval tv;
+
+    tv.tv_sec = GET_OPT_VALUE(age_interval);
+    tv.tv_usec = 0;
+	dpvs_timer_update(&g_ns_timer, &tv, true);
+
+	return DTIMER_OK;
 }
 
 char* nscmd_get_module_short_name(int32_t id)
@@ -163,10 +169,7 @@ int32_t nscmd_run_cmds(ns_task_t *nstask)
 {
 	int32_t ret = NS_ACCEPT;
 	nscmd_module_t *cmd = NULL;
-
-#if 0
 	session_t *si;
-#endif
 
 	ENT_FUNC(3);
 
@@ -211,7 +214,7 @@ int32_t nscmd_run_cmds(ns_task_t *nstask)
 		return ret;
 	}
 
-	//si = nstask->si;
+	si = nstask->si;
 
 #if 0
 	// ACCEPT/DROP 모두 통계 생성
@@ -220,18 +223,17 @@ int32_t nscmd_run_cmds(ns_task_t *nstask)
 	}
 #endif
 
-#if 0
-	if (likely(nstask->si)) {
+	if (likely(nstask->si != NULL)) {
 		session_release(nstask->si);
 		nstask->si = NULL;
 	}
 
 	if (nstask->mp_fw.policy_set) {
-		pmgr_policyset_release(nstask->mp_fw.policy_set);
+		//pmgr_policyset_release(nstask->mp_fw.policy_set);
 	}
 
 	if (nstask->mp_nat.policy_set) {
-		pmgr_policyset_release(nstask->mp_nat.policy_set);
+		//pmgr_policyset_release(nstask->mp_nat.policy_set);
 	}
 
 	if (ret == NS_DEL_SESSION) {
@@ -241,7 +243,6 @@ int32_t nscmd_run_cmds(ns_task_t *nstask)
 
 		ret = NS_DROP;
 	}
-#endif
 
 	return ret;
 }
@@ -324,16 +325,20 @@ int32_t nscmd_init_module(void)
 		}
 	}
 
-#if 0
 	// 2. timer 등록
-	init_timer(&g_kernel_timer);
+    struct timeval tv;
 
-	g_kernel_timer.expires = jiffies + (HZ * GET_OPT_VALUE(age_interval));
-	g_kernel_timer.data = 0;
-	g_kernel_timer.function = &nscmd_callback_timer;
+    tv.tv_sec =  GET_OPT_VALUE(age_interval);
+    tv.tv_usec = 0;
 
-	add_timer(&g_kernel_timer);
+    i = dpvs_timer_sched(&g_ns_timer, &tv, nscmd_callback_timer, NULL, true);
+    //i = dpvs_timer_sched_period(&g_ns_timer, &tv, nscmd_callback_timer, NULL, true);
+    if (i != EDPVS_OK) {
+		ns_err("Cannot register timer");
+	}
 
+
+#if 0
 	// 3. sysctl 관련 등록
 	ns_register_proc();
 #endif
@@ -350,12 +355,12 @@ void nscmd_clean_module(void)
 	// 1. sysctl 제거
 	ns_unregister_proc();
 
-	// 2. timer 제거
-	del_timer(&g_kernel_timer);
 #endif
 
-	// 3. 각 컴퍼넌트 제거
+	// 2. timer 제거
+	dpvs_timer_reset(&g_ns_timer, true);
 
+	// 3. 각 컴퍼넌트 제거
 	for (i = NS_CMD_MAX - 1; i >= 0; i--) {
 		c = &nscmd_module_list[i];
 		if (!c->clean) {

@@ -18,11 +18,12 @@ typedef struct session_key_s {
 	uint16_t  	dp; 	///< dst port, if icmp, icmp type
 	nic_id_t	inic; 	///< in nic idx
 	nic_id_t 	onic;	///< out nic idx
+	uint32_t 	hashkey; ///< hash value
 	uint8_t 	proto; 	///< protocol number
 	uint8_t 	flags;
-	uint32_t 	hashkey; ///< hash value
+	uint16_t 	dummy;
 
-}__attribute__((packed, aligned(4))) skey_t; 	// 44 bytes
+}__attribute__((packed, aligned(4))) skey_t; 	// 52 bytes
 
 #define clear_key(k) 	memset(k, 0, sizeof(skey_t))
 

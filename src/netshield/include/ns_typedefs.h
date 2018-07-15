@@ -4,6 +4,7 @@
 //#include <linux/version.h>
 
 #include "ipv4.h"
+#include "list.h"
 
 ///////////////////////////////////////////////////////////////////////////
 // kernel과 user mode의 endian mode 정의 호환성을 위해서 사용
@@ -76,31 +77,6 @@ enum {
 	FUNC_FLAG_IPV6 = 0x01,
 };
 	
-
-///////////////////////////////////////////////////////////////////////////
-// kernel의 spinlock_t를 user에서 컴파일 하기 위해 정의, 코드 호환성 유지.
-///////////////////////////////////////////////////////////////////////////
-
-#if 0
-#ifndef __KERNEL__
-
-struct lockdep_map {
-	char		*key;
-	char		*class_cache;
-	const char	*name;
-};
-
-typedef struct {
-	volatile unsigned int slock;
-} raw_spinlock_t;
-
-
-typedef struct {
-	raw_spinlock_t raw_lock;
-} spinlock_t;
-
-#endif // !__KERNEL__
-#endif
 
 ///////////////////////////////////////////////////////////////////////////
 // kernel과 user의 코드 호환성을 위해서 정의함.
@@ -186,7 +162,56 @@ typedef rte_spinlock_t 		spinlock_t;
 typedef rte_atomic32_t 	  	atomic_t;
 typedef uint8_t 			ns_node_id_t; 	///< for NetShield Node ID
 
+typedef struct hlist_node 	hlist_node_t;
+typedef struct hlist_head 	hlist_head_t;
+typedef struct list_head 	list_head_t;
 
+#define atomic_t                rte_atomic32_t
+#define atomic_read(v)          rte_atomic32_read(v)
+#define atomic_set(v, i)        rte_atomic32_set(v, i)
+
+#define atomic_inc(v)           rte_atomic32_add(v, 1)
+#define atomic_dec(v)           rte_atomic32_sub(v, 1)
+
+#define atomic_inc_and_test(v)  rte_atomic32_inc_and_test(v)
+#define atomic_dec_and_test(v)  rte_atomic32_dec_and_test(v)
+
+#define atomic_inc_return(v)    rte_atomic32_add_return(v, 1)
+#define atomic_dec_return(v)    rte_atomic32_sub_return(v, 1)
+#define atomic_sub_and_test(i, v) (rte_atomic32_sub_return(v, i) == 0)
+
+///////////////////////////////////////////
+// 
+/* INFO: LOCK은 반드시 아래와 같은 스티일로 코딩 해야 한다.
+*
+*  ns_rw_lock_irq() {
+*	 something(...)
+*  } ns_rw_unlock_irq();
+*
+*/
+// 데이터를 write를 해야 하는 경우 사용
+// _irq는 soft-irq(Bottom-Half) 상태에서 사용
+#define	ns_rw_trylock_irq(l) rte_spinlock_trylock(l)
+#define	ns_rw_lock_irq(l) 	rte_spinlock_lock(l);
+#define	ns_rw_unlock_irq(l) rte_spinlock_unlock(l);
+#define	ns_rw_lock(l)		rte_spinlock_lock(l);
+#define	ns_rw_unlock(l)		rte_spinlock_unlock(l);
+
+// 데이터를 읽기만 하는 경우 사용
+#if 0
+#define	ns_rd_lock_irq()	rcu_read_lock_bh();
+#define	ns_rd_unlock_irq() 	rcu_read_unlock_bh();
+#define	ns_rd_lock()		rcu_read_lock();
+#define	ns_rd_unlock()		rcu_read_unlock();
+#else
+#define	ns_rd_lock_irq()	
+#define	ns_rd_unlock_irq() 	
+#define	ns_rd_lock()		
+#define	ns_rd_unlock()		
+
+#endif
+
+#define ns_init_lock(l) 	rte_spinlock_init(l)
 #if 0
 typedef union _ip6_t {
 	uint8_t		a8[16];

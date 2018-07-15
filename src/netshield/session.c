@@ -164,7 +164,7 @@ void session_free(session_t *si)
 void session_hold(session_t *si)
 {
 	if (si) {
-		rte_atomic32_inc(&si->refcnt);
+		atomic_inc(&si->refcnt);
 	}
 }
 
@@ -176,7 +176,7 @@ void session_release(session_t *si)
 		return;
 	}
 
-	ref = rte_atomic32_sub_return(&si->refcnt, 1);
+	ref = atomic_dec_return(&si->refcnt);
 	if (ref > 0) {
 		// still alive
 		return;
