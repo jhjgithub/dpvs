@@ -12,14 +12,13 @@
 #include <ns_malloc.h>
 #include <khypersplit.h>
 #include <pmgr.h>
-#include <ioctl_session.h>
 #include <tcp_state.h>
 #endif
 
 #include <ns_typedefs.h>
 #include <macros.h>
 #include <ns_malloc.h>
-#include "ns_task.h"
+#include <ns_task.h>
 #include <ns_dbg.h>
 #include <session.h>
 #include <smgr.h>
@@ -27,6 +26,7 @@
 #include <pmgr.h>
 #include <options.h>
 #include <cmds.h>
+#include <ioctl_session.h>
 
 
 //////////////////////////////////////////////////////
@@ -98,9 +98,9 @@ int32_t smgr_add_session(smgr_t *smgr, session_t *si)
 	smgr_add_alist(smgr, si);
 
 	session_insert(smgr->stab, si);
-	//nstimer_insert(&si->timer, 10);
+	nstimer_insert(&si->timer, 10);
 
-	dbg(5, "Add a new session: si=0x%p, refcnt=%d", si, rte_atomic32_read(&si->refcnt));
+	dbg(5, "Add a new session: si=0x%p, refcnt=%d", si, atomic_read(&si->refcnt));
 
 	return 0;
 }
@@ -109,7 +109,7 @@ int32_t smgr_delete_session(session_t *si, uint32_t flags)
 {
 	ENT_FUNC(3);
 
-	dbg(5, "Delete old session: si=0x%p, refcnt=%d", si, rte_atomic32_read(&si->refcnt));
+	dbg(5, "Delete old session: si=0x%p, refcnt=%d", si, atomic_read(&si->refcnt));
 
 	if (flags & SMGR_DEL_SAVE_LOG) {
 		// 세션 종료시 INFO 로그도 같이 남김 (통계에서 사용)
@@ -127,7 +127,7 @@ int32_t smgr_delete_session(session_t *si, uint32_t flags)
 	smgr_remove_alist(g_smgr, si);
 
 	session_remove(g_smgr->stab, si);
-	//nstimer_remove(&si->timer);
+	nstimer_remove(&si->timer);
 
 	return 0;
 }
@@ -186,7 +186,6 @@ START:
 int32_t smgr_setup_session_info(char* arg)
 {
 	int32_t ret=0;
-#if 0
 	ioctl_get_sess_t *user_sinfo = (ioctl_get_sess_t*)arg;
 	uint32_t scnt, max_cnt;
 	session_t *si, *n;
@@ -228,7 +227,6 @@ int32_t smgr_setup_session_info(char* arg)
 	}
 
 	user_sinfo->num_sess = scnt;
-#endif
 
 	return ret;
 }
@@ -261,13 +259,12 @@ int32_t smgr_slow_main(ns_task_t *nstask)
 {
 	smgr_t *smgr = g_smgr;
 	session_t *si = NULL;
-	fw_policy_t *fwp=NULL, *natp=NULL;
-	policyset_t *fwps=NULL, *natps = NULL;
+	sec_policy_t *fwp=NULL, *natp=NULL;
+	policyset_t  *fwps=NULL, *natps = NULL;
 	int32_t ret = NS_DROP;
 
 	ENT_FUNC(3);
 
-#if 0
 	// for Firewall
 	fwps = pmgr_get_firewall_policyset();
 	fwp = nstask->mp_fw.policy;
@@ -280,7 +277,7 @@ int32_t smgr_slow_main(ns_task_t *nstask)
 		return NS_DROP;
 	}
 
-	dbg(5, "Firewall Rule Info: desc=%s, action=0x%llx", fwp->desc, fwp->action);
+	dbg(5, "Firewall Rule Info: desc=%s, action=0x%lx", fwp->desc, fwp->action);
 
 	natp = nstask->mp_nat.policy;
 	if (natp) {
@@ -294,11 +291,9 @@ int32_t smgr_slow_main(ns_task_t *nstask)
 			natps = NULL;
 		}
 		else {
-			dbg(5, "NAT Rule Info: desc=%s, action=0x%llx", natp->desc, natp->action);
+			dbg(5, "NAT Rule Info: desc=%s, action=0x%lx", natp->desc, natp->action);
 		}
 	}
-
-#endif
 
 	si = session_alloc();
 	if (si == NULL) {
@@ -309,17 +304,18 @@ int32_t smgr_slow_main(ns_task_t *nstask)
 	memcpy(&si->skey, &nstask->skey, sizeof(skey_t));
 
 	si->sid = smgr_get_next_sid();
-	si->born_time = 0; // nstimer_get_time();
+	si->born_time = nstimer_get_time();
 	//si->timeout = policy->timeout;
 	si->timeout = -1; 	// to use system default value
 	si->action = fwp->action;
+	si->action = ACT_ALLOW;
 
 	memcpy(&si->mp_fw, &nstask->mp_fw, sizeof(mpolicy_t));
 	// XXX: no need to increase refcnt because nstask already had
 	//pmgr_policyset_hold(fwps);
 
 	if (natp) {
-		if (nat_bind_info(si, natp, nstask->skey.inic)) {
+		if (nat_bind_info(si, &nstask->mp_nat, nstask->skey.inic)) {
 			goto ERR;
 		}
 
@@ -352,11 +348,11 @@ int32_t smgr_slow_main(ns_task_t *nstask)
 
 ERR:
 	if (fwps) {
-		//pmgr_policyset_release(fwps);
+		pmgr_policyset_release(fwps);
 	}
 
 	if (natps) {
-		//pmgr_policyset_release(natps);
+		pmgr_policyset_release(natps);
 	}
 
 	if (si) {
@@ -534,7 +530,10 @@ int32_t smgr_fast_main(ns_task_t *nstask)
 	if (nstask->si == NULL) {
 		dbg(0, "-----+ Begin Slow Path +-----");
 		// call pmgr_main()
-		//append_cmd(nstask, pmgr);
+		append_cmd(nstask, pmgr);
+
+		// call smgr_slow_main()
+		append_cmd(nstask, smgr_slow);
 	}
 	else {
 		dbg(0, "++++++ Begin Fast Path ++++++");

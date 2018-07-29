@@ -44,7 +44,7 @@ INIT		= $(RPM_BUILD_ROOT)/etc/rc.d/init.d
 MKDIR		= mkdir
 INSTALL		= install
 STATIC_LIBS	= ../keepalived/keepalived/libipvs-2.6/libipvs.a
-DPVSDEPS    = ../../src/common.o
+DPVSDEPS    = ../../src/obj/common.o
 
 ifeq "${ARCH}" "sparc64"
     CFLAGS = -Wall -Wunused -Wstrict-prototypes -g -m64 -pipe -mcpu=ultrasparc -mcmodel=medlow

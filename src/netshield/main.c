@@ -6,7 +6,7 @@
 #include <arpa/inet.h>
 #include "dpdk.h"
 #include "netif.h"
-#include "ipv4.h"
+#include <ipv4.h>
 #include "ipv4_frag.h"
 #include "neigh.h"
 #include "icmp.h"
@@ -15,6 +15,7 @@
 #include "netshield.h"
 #include "ns_task.h"
 #include "cmds.h"
+#include "ioctl.h"
 
 
 uint32_t netshield_running = 0;
@@ -113,6 +114,8 @@ int netshield_init(void)
 		ns_warn("Init NetShield failed: ret=%d", ret);
 	}
 
+	nsioctl_init();
+
 	return ret;
 }
 
@@ -122,6 +125,7 @@ int netshield_term(void)
 
 	ns_log("Stop Netshield");
 
+	nsioctl_term();
 	nscmd_clean_module();
 
 	ret = ipv4_unregister_hooks(nshook_ops, 2);

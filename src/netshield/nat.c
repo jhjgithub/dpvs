@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <dpdk.h>
+#include <ipv4.h>
 
 #if 0
 #include <include_os.h>
@@ -26,7 +27,7 @@
 #include <action.h>
 #include <options.h>
 #include <ns_malloc.h>
-#include <fw_policy.h>
+#include <pmgr.h>
 
 #define	IS_HW_CSUM(nstask) 	(nstask->pkt->ip_summed == CHECKSUM_PARTIAL)
 
@@ -145,24 +146,31 @@ void nat_clean_ip_obj(nat_policy_t* natp)
 	natp->ip_cnt = -1;
 }
 
-int32_t nat_clean_bitmap(fw_policy_t *fwp, int32_t cnt)
+#if 0
+int32_t nat_clean_bitmap(sec_policy_t *fwp, int32_t cnt)
 {
 	int32_t i;
+	nat_policy_t *np;
 
 	for (i=0; i<cnt; i++) {
 
 		if (!(fwp[i].action & ACT_NAT)) 
 			continue;
 
-		if (fwp[i].nat_policy[0])
-			nat_clean_ip_obj(fwp[i].nat_policy[0]);
+		np = nat_get_policy(fwp[i].nat_policy_id[0]);
+		if (np != NULL) {
+			nat_clean_ip_obj(np);
+		}
 
-		if (fwp[i].nat_policy[1])
-			nat_clean_ip_obj(fwp[i].nat_policy[1]);
+		np = nat_get_policy(fwp[i].nat_policy_id[1]);
+		if (np != NULL) {
+			nat_clean_ip_obj(np);
+		}
 	}
 
 	return 0;
 }
+#endif
 
 void nat_check_and_fix_port_range(nat_policy_t* natp)
 {
@@ -583,23 +591,25 @@ int32_t nat_do_binding(session_t* si, nat_policy_t *natp, int32_t inic, ip_t *ne
 	return ret;
 }
 
-int32_t nat_bind_info(session_t* si, fw_policy_t* fwp, nic_id_t inic)
+int32_t nat_bind_info(session_t* si, mpolicy_t *mp_nat, nic_id_t inic)
 {
 	nat_policy_t *n[2];
 	int32_t ret=0, idx=0;
 	natinfo_t *natinfo = &si->natinfo;
+	sec_policy_t *fwp;
 
 	ENT_FUNC(3);
 
+	fwp = mp_nat->policy;
 	bzero(natinfo, sizeof(natinfo_t));
 
 	// Single NAT
-	n[0] = fwp->nat_policy[0];
+	n[0] = pmgr_get_nat_policy(mp_nat->policy_set, fwp->nat_policy_id[0]);
 	if (n[0] == NULL)
 		return -1;
 
 	// check valid for Both NAT
-	n[1] = fwp->nat_policy[1];
+	n[1] = pmgr_get_nat_policy(mp_nat->policy_set, fwp->nat_policy_id[1]);
 
 	if (fwp->action & ACT_BNAT) {
 		if (n[1] == NULL)
@@ -692,13 +702,14 @@ int32_t nat_update_used_nat_info(session_t* si)
 	return 0;
 }
 
-int32_t nat_release_info(session_t* si, fw_policy_t* fwp)
+int32_t nat_release_info(session_t* si, mpolicy_t* mp)
 {
 	nat_ip_t *nip;
 	uint16_t port=0;
 	ip_t  ip;
 	int32_t i;
 	nat_policy_t *p;
+	sec_policy_t *fwp;
 
 	ENT_FUNC(3);
 
@@ -709,11 +720,13 @@ int32_t nat_release_info(session_t* si, fw_policy_t* fwp)
 
 	DBGKEY(9, SKEY, &si->skey);
 
+	fwp = mp->policy;
+
 	for (i=0; i<2; i++) {
 
 		ip = si->natinfo.ip[i];
 		port = si->natinfo.port[i];
-		p = fwp->nat_policy[i];
+		p = pmgr_get_nat_policy(mp->policy_set, fwp->nat_policy_id[i]);
 
 #if 0
 		if (ip == 0 || p == NULL) {

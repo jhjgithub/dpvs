@@ -194,7 +194,7 @@ void session_release(session_t *si)
 	// NAT 세션 인경우 NAT 정보를 반환 한다.
 	if (si->action & ACT_NAT_RELEASE) {
 		if (si->mp_nat.policy) {
-			nat_release_info(si, si->mp_nat.policy);
+			nat_release_info(si, &si->mp_nat);
 		}
 	}
 

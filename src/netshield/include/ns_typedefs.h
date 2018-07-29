@@ -3,8 +3,13 @@
 
 //#include <linux/version.h>
 
-#include "ipv4.h"
-#include "list.h"
+//#include <ipv4.h>
+#include <stdint.h>
+#include "dpdk.h"
+#include "common.h"
+//#include "netif.h"
+//#include "route.h"
+#include <list.h>
 
 ///////////////////////////////////////////////////////////////////////////
 // kernel과 user mode의 endian mode 정의 호환성을 위해서 사용

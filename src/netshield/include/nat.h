@@ -3,9 +3,9 @@
 
 #include <arp_proxy.h>
 
-struct fw_policy_s;
 struct session_s;
 struct ns_task_s;
+struct matched_policy_s;
 
 ////////////////////////////////////////////////////////
 
@@ -78,8 +78,8 @@ typedef struct nat_policy_s {
 
 /////////////////////////////////////////////////////////////
 
-int32_t nat_bind_info(struct session_s* si, struct fw_policy_s* fwp, nic_id_t inic);
-int32_t nat_release_info(struct session_s* si, struct fw_policy_s* fwp);
+int32_t nat_bind_info(struct session_s* si, struct matched_policy_s *mp_nat, nic_id_t inic);
+int32_t nat_release_info(struct session_s* si, struct matched_policy_s* mp);
 uint32_t nat_make_hash(struct session_s *si);
 int32_t nat_main(struct ns_task_s* nstask);
 void 	nat_clean_ip_obj(nat_policy_t* natp);

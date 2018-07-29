@@ -6,6 +6,7 @@
 #include <linux/icmp.h>
 #include <linux/icmpv6.h>
 #include "dpdk.h"
+#include <ipv4.h>
 #include "ns_typedefs.h"
 #include "macros.h"
 #include "netshield.h"

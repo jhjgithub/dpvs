@@ -35,14 +35,14 @@ typedef struct hashdata_s {
 
 #define NS_HASH_SIZE 19
 
-struct fw_policy_s;
+struct sec_policy_s;
 struct policyset_s;
 
 //#define MPOLICY_HAVE_POLICY 0x01
 
 typedef struct matched_policy_s {
-	struct fw_policy_s *policy;
-	struct policyset_s *policy_set;
+	struct sec_policy_s *policy;
+	struct policyset_s 	*policy_set;
 	//uint32_t 			ver;	 // 0: not use
 }__attribute__((packed, aligned(4))) mpolicy_t; // 20 bytes
 

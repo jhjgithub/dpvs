@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include "dpdk.h"
+#include <ipv4.h>
 
 #if 0
 #include <include_os.h>
@@ -24,6 +25,7 @@
 #include <ns_dbg.h>
 #include <session.h>
 #include <smgr.h>
+#include <pmgr.h>
 #include <options.h>
 
 
@@ -52,8 +54,6 @@ nscmd_module_t nscmd_module_list[] =
 	//  name            short_name  run                 init                clean           age
 	CMD_ITEM(nsdev,      NSDEV,      NULL,              nsdev_init,         nsdev_clean,    NULL),
 	CMD_ITEM(frag,       FR,         frag_main,          NULL,               NULL,           NULL),
-	CMD_ITEM(smgr_slow, SMGR_SLOW,  smgr_slow_main,    	NULL,    		       NULL,     NULL),
-	CMD_ITEM(pmgr, 		PMGR_MAIN, 	pmgr_main,         pmgr_init,           pmgr_clean,     NULL),
 	CMD_ITEM(arpp,       ARPP,        NULL,          	arpp_init,           arpp_clean,    NULL),
 	CMD_ITEM(nat,        NAT,         nat_main,          NULL,               NULL,          NULL),
 #endif
@@ -61,8 +61,10 @@ nscmd_module_t nscmd_module_list[] =
 	CMD_ITEM(timer,     TIMER,      NULL,              	nstimer_init,       nstimer_clean,  nstimer_ageing),
 	CMD_ITEM(smgr_timeout,SMGR_TIMEOUT,smgr_timeout,    NULL,               NULL,           NULL),
 	CMD_ITEM(smgr_fast,	SMGR_FAST, 	smgr_fast_main,  	smgr_init,          smgr_clean,     NULL),
-	CMD_ITEM(taskinfo,   TI,        init_task_info,     NULL,               NULL,           NULL),
-	CMD_ITEM(inet,       IN,        parse_inet_protocol,NULL,             	NULL,           NULL),
+	CMD_ITEM(smgr_slow, SMGR_SLOW,  smgr_slow_main,    	NULL,    		       NULL,     NULL),
+	CMD_ITEM(taskinfo,  TI,        	init_task_info,     NULL,               NULL,           NULL),
+	CMD_ITEM(inet,      IN,        	parse_inet_protocol,NULL,             	NULL,           NULL),
+	CMD_ITEM(pmgr, 		PMGR_MAIN, 	pmgr_main,         pmgr_init,           pmgr_clean,     NULL),
 
 	[NS_CMD_MAX] = {.name=NULL, .short_name= NULL, .run=NULL, .init=NULL, .clean=NULL, .age=NULL}
 

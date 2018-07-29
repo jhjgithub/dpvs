@@ -1,16 +1,20 @@
 #ifndef __POLICY_MAMAGER_H__
 #define __POLICY_MAMAGER_H__
 
-#include <fw_policy.h>
+#include <sec_policy.h>
+#include <hypersplit_util.h>
+
+#define MAX_POLICY UINT_MAX
 
 typedef struct policyset_s {
 	uint8_t 		*hs_mem; 	// root memory to store policyset
 
-	//hypersplit_t 	hypersplit;
-	fw_policy_t 	*policy;
-	uint32_t 		num_policy;
-	uint16_t 		version;
-	uint16_t 		dummy;
+	hypersplit_t 	hypersplit;
+	sec_policy_t 	*spolicies;
+	uint32_t 		num_spolicies;
+	nat_policy_t 	*npolicies;
+	uint32_t 		num_npolicies;
+	uint32_t 		version;
 	atomic_t 		refcnt;
 } policyset_t;
 
@@ -48,11 +52,12 @@ typedef struct pktinfo_s {
 int32_t pmgr_init(void);
 void 	pmgr_clean(void);
 int32_t pmgr_main(ns_task_t *nstask);
-int32_t pmgr_apply_policy(char*);
+int32_t pmgr_apply_policy(uint8_t*, size_t);
 void 	pmgr_policyset_release(policyset_t *ps);
 void 	pmgr_policyset_hold(policyset_t *ps);
 policyset_t* pmgr_get_firewall_policyset(void);
 policyset_t* pmgr_get_nat_policyset(void);
-fw_policy_t* pmgr_get_fw_policy(policyset_t *ps, uint32_t index);
+sec_policy_t* pmgr_get_firewall_policy(policyset_t *ps, uint32_t fwidx);
+nat_policy_t* pmgr_get_nat_policy(policyset_t *ps, uint32_t natidx);
 
 #endif

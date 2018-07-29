@@ -17,6 +17,8 @@
 
 
 //#include <netshield_hook.h>
+
+#include <ipv4.h>
 #include <skey.h>
 
 static inline void* ns_get_task(skb_t *skb)
