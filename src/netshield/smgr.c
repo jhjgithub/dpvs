@@ -2,19 +2,6 @@
 #include <stdint.h>
 #include <dpdk.h>
 
-#if 0
-#include <include_os.h>
-
-#include <typedefs.h>
-#include <session.h>
-#include <commands.h>
-#include <log.h>
-#include <ns_malloc.h>
-#include <khypersplit.h>
-#include <pmgr.h>
-#include <tcp_state.h>
-#endif
-
 #include <ns_typedefs.h>
 #include <macros.h>
 #include <ns_malloc.h>
@@ -27,18 +14,19 @@
 #include <options.h>
 #include <cmds.h>
 #include <ioctl_session.h>
+#include <tcp_state.h>
+#include <ioctl.h>
 
 
 //////////////////////////////////////////////////////
 
 smgr_t		*g_smgr; 
-extern struct kmem_cache	*netshield_scache;
 
-DECLARE_DBG_LEVEL(9);
+DECLARE_DBG_LEVEL(2);
 
 //////////////////////////////////////////////////////
 
-void netshield_create_sem_cache(int32_t size);
+//void netshield_create_sem_cache(int32_t size);
 int32_t smgr_post_main(ns_task_t *nstask);
 int32_t nstimer_get_lifetime(uint32_t cur_time, uint32_t timeout, uint32_t timestamp);
 
@@ -50,6 +38,11 @@ int32_t nstimer_get_lifetime(uint32_t cur_time, uint32_t timeout, uint32_t times
 uint32_t smgr_get_next_sid(void)
 {
 	return (uint32_t)atomic_inc_return(&g_smgr->last_id);
+}
+
+uint32_t smgr_get_session_count(void)
+{
+	return atomic_read(&g_smgr->all);
 }
 
 void smgr_remove_alist(smgr_t *smgr, session_t *si)
@@ -100,7 +93,7 @@ int32_t smgr_add_session(smgr_t *smgr, session_t *si)
 	session_insert(smgr->stab, si);
 	nstimer_insert(&si->timer, 10);
 
-	dbg(5, "Add a new session: si=0x%p, refcnt=%d", si, atomic_read(&si->refcnt));
+	dbg(5, "Add a new session: si=%p, refcnt=%d", si, atomic_read(&si->refcnt));
 
 	return 0;
 }
@@ -183,52 +176,77 @@ START:
 	return del_cnt;
 }
 
-int32_t smgr_setup_session_info(char* arg)
+int32_t smgr_show_session_info(ioctl_data_t *iodata)
 {
 	int32_t ret=0;
-	ioctl_get_sess_t *user_sinfo = (ioctl_get_sess_t*)arg;
-	uint32_t scnt, max_cnt;
+	ioctl_get_sess_t *user_sinfo;
+	ioctl_session_t *is;
+	uint32_t scnt, max_cnt, len, idx;
 	session_t *si, *n;
+	ioctl_get_sess_t *in = (ioctl_get_sess_t*)iodata->in;
 
 	ENT_FUNC(3);
 
-	max_cnt = atomic_read(&g_smgr->all);
+	max_cnt = smgr_get_session_count();
+	if (max_cnt == 0) {
+		iodata->out = NULL;
+		iodata->outsize = 0;
+		return 0;
+	}
+
+	if (in->num_sess != 0 && in->num_sess < max_cnt) {
+		max_cnt = in->num_sess;
+	}
+
+	len = sizeof(ioctl_get_sess_t) + (sizeof(ioctl_session_t) * max_cnt);
+
+	dbg(5, "Current session: %u, memlen=%u", max_cnt, len);
+	user_sinfo = rte_malloc(NULL, len, 1);
+	if (user_sinfo == NULL) {
+		return -1;
+	}
+
 	scnt = 0;
+	idx = 0;
+	is = (ioctl_session_t*)user_sinfo->data;
 
-	dbg(5, "Current session: %u", max_cnt);
+	list_for_each_entry_safe(si, n, &g_smgr->all_slist, alist) {
+		if (idx < in->start_idx) {
+			idx ++;
+			continue;
+		}
 
-	if (max_cnt > 0) {
-		list_for_each_entry_safe(si, n, &g_smgr->all_slist, alist) {
-			ioctl_session_t *s = &user_sinfo->sess[scnt];
-			uint32_t ctime = nstimer_get_time();
+		ioctl_session_t *s = &is[idx];
+		uint32_t ctime = nstimer_get_time();
 
-			skey_t *dsk = &s->skey;
-			skey_t *ssk = &si->skey;
+		skey_t *dsk = &s->skey;
+		skey_t *ssk = &si->skey;
 
-			dsk->src = ssk->src;
-			dsk->dst = ssk->dst;
-			dsk->sp = ssk->sp;
-			dsk->dp = ssk->dp;
-			dsk->proto = ssk->proto;
+		dsk->src = ssk->src;
+		dsk->dst = ssk->dst;
+		dsk->sp = ssk->sp;
+		dsk->dp = ssk->dp;
+		dsk->proto = ssk->proto;
 
-			s->sid = si->sid;
-			s->born_time = si->born_time;
-			s->timeout = nstimer_get_lifetime(ctime, si->timer.timeout, si->timer.timestamp);
+		s->sid = si->sid;
+		s->born_time = si->born_time;
+		s->timeout = nstimer_get_lifetime(ctime, si->timer.timeout, si->timer.timestamp);
 
-			s->fwpolicy_id = si->mp_fw.policy ? si->mp_fw.policy->rule_id : 0;
+		s->fwpolicy_id = si->mp_fw.policy ? si->mp_fw.policy->rule_id : 0;
 
-			scnt ++;
+		scnt ++;
+		idx ++;
 
-			if (scnt >= user_sinfo->num_sess ||
-				scnt >= max_cnt) {
-				break;
-			}
+		if (scnt >= max_cnt) {
+			break;
 		}
 	}
 
 	user_sinfo->num_sess = scnt;
+	iodata->out = (void*)user_sinfo;
+	iodata->outsize = sizeof(ioctl_get_sess_t) + (sizeof(ioctl_session_t) * scnt);
 
-	return ret;
+	return 0;
 }
 
 session_t *smgr_get_ftpdata_parent(session_t *si)
@@ -266,12 +284,12 @@ int32_t smgr_slow_main(ns_task_t *nstask)
 	ENT_FUNC(3);
 
 	// for Firewall
-	fwps = pmgr_get_firewall_policyset();
+	fwps = pmgr_get_policyset(POLICYSET_FIREWALL);
 	fwp = nstask->mp_fw.policy;
 	if (fwps != nstask->mp_fw.policy_set) {
 
 		if (fwps) {
-			pmgr_policyset_release(fwps);
+			pmgr_release_policyset(fwps);
 		}
 
 		return NS_DROP;
@@ -281,10 +299,10 @@ int32_t smgr_slow_main(ns_task_t *nstask)
 
 	natp = nstask->mp_nat.policy;
 	if (natp) {
-		natps = pmgr_get_nat_policyset();
+		natps = pmgr_get_policyset(POLICYSET_NAT);
 		if (natps != nstask->mp_nat.policy_set) {
 			if (natps) {
-				pmgr_policyset_release(natps);
+				pmgr_release_policyset(natps);
 			}
 
 			natp = NULL;
@@ -297,7 +315,7 @@ int32_t smgr_slow_main(ns_task_t *nstask)
 
 	si = session_alloc();
 	if (si == NULL) {
-		dbg(5, "Cannot add a new session");
+		dbg(2, "Cannot alloc a new session");
 		goto ERR;
 	}
 
@@ -337,7 +355,7 @@ int32_t smgr_slow_main(ns_task_t *nstask)
 	nstask->flags |= TASK_FLAG_NEW_SESS;
 
 	if (nstask->skey.proto == IPPROTO_TCP) {
-		//tcp_init_seq(nstask);
+		tcp_init_seq(nstask);
 	}
 
 	smgr_post_main(nstask);
@@ -348,11 +366,11 @@ int32_t smgr_slow_main(ns_task_t *nstask)
 
 ERR:
 	if (fwps) {
-		pmgr_policyset_release(fwps);
+		pmgr_release_policyset(fwps);
 	}
 
 	if (natps) {
-		pmgr_policyset_release(natps);
+		pmgr_release_policyset(natps);
 	}
 
 	if (si) {
@@ -371,7 +389,7 @@ int32_t smgr_timeout(ns_task_t *nstask)
 
 	ENT_FUNC(3);
 
-	iph = ns_get_iph(nstask);
+	iph = ns_get_ip_hdr(nstask);
 	si = nstask->si;
 	if (unlikely(si == NULL)) {
 		return NS_ACCEPT;
@@ -394,7 +412,6 @@ int32_t smgr_timeout(ns_task_t *nstask)
 		timeout = GET_OPT_VALUE(timeout_close); 	// 10 sec
 		parent = smgr_get_ftpdata_parent(si);
 
-#if 0
 		// TCP seq를 검사한다.
 		if (tcp_track_seq(nstask) && GET_OPT_VALUE(drop_tcp_oow)) {
 			// drop out of window packet
@@ -402,12 +419,10 @@ int32_t smgr_timeout(ns_task_t *nstask)
 
 			return NS_DROP;
 		}
-#endif
 
 		oldst1 = si->tcpst.tseq[0].state;
 		oldst2 = si->tcpst.tseq[1].state;
 
-#if 0
 		state_changed = tcp_track_states(nstask, &timeout);
 		// the session came from Magic, so send DSYNC Update
 		//state_changed |= MAKE_BIT(nstask->flags & WTF_MAGIC_SESS);
@@ -415,9 +430,6 @@ int32_t smgr_timeout(ns_task_t *nstask)
 		if (timeout == -1) {
 			timeout = GET_OPT_VALUE(timeout_tcp);
 		}
-#else
-		timeout = 60;
-#endif
 
 		dbg(5, "Update TCP session: SID=%u, timeout=%d, state=%d:%d -> %d:%d, tcp_changed=%d",
 			si->sid,
@@ -522,7 +534,6 @@ int32_t smgr_fast_main(ns_task_t *nstask)
 
 	nstask->skey.hashkey = session_make_hash(&nstask->skey);
 
-	dbg(0, "Hashkey: 0x%x", nstask->skey.hashkey);
 	DBGKEY(0, "TASK_KEY", &nstask->skey);
 
 	nstask->si = session_search(g_smgr->stab, &nstask->skey);
@@ -531,9 +542,6 @@ int32_t smgr_fast_main(ns_task_t *nstask)
 		dbg(0, "-----+ Begin Slow Path +-----");
 		// call pmgr_main()
 		append_cmd(nstask, pmgr);
-
-		// call smgr_slow_main()
-		append_cmd(nstask, smgr_slow);
 	}
 	else {
 		dbg(0, "++++++ Begin Fast Path ++++++");
@@ -552,12 +560,14 @@ int32_t smgr_post_main(ns_task_t *nstask)
 {
 	session_t *si = nstask->si;
 
+	ENT_FUNC(3);
+
 	// call smgr_timeout()
 	append_cmd(nstask, smgr_timeout);
 
 	if (si->action & ACT_NAT) {
 		// call nat_main()
-		//append_cmd(nstask, nat);
+		append_cmd(nstask, nat);
 	}
 
 	return NS_ACCEPT;

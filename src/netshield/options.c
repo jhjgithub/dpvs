@@ -1,44 +1,24 @@
 #include <stdio.h>
 #include <stdint.h>
 
-#if 0
-#include <include_os.h>
-
-#include <typedefs.h>
-#include <ns_macro.h>
-#include <session.h>
-#include <version.h>
-#include <ns_malloc.h>
-#include <ns_sysctl.h>
-#include <smgr.h>
-#endif
-
 #include <options.h>
-#include "ns_typedefs.h"
-#include "macros.h"
-#include "ns_dbg.h"
+#include <ns_typedefs.h>
+#include <macros.h>
+#include <ns_dbg.h>
+#include <smgr.h>
+#include <utils.h>
+#include <ioctl.h>
 
 
 //////////////////////////////////////////////////////
 
-//#define PROC_MIN_MAX	&proc_dointvec_minmax
-//#define PROC_LONG 		&proc_doulongvec_minmax
 #define PROC_MIN_MAX	NULL
 #define PROC_LONG 		NULL
-
-#if 0
-#define ATOMIC_SCNT_ALL 		1
-#define ATOMIC_SCNT_MINE 		2
-#define ATOMIC_SCNT_REMOTE 		3
-#define ATOMIC_SCNT_LOCAL 		4
-#define ATOMIC_SCNT_MAGIC 		5
-#define ATOMIC_CURRENT_TIME 	6
-#endif
 
 
 DECLARE_DBG_LEVEL(2);
 
-//extern smgr_t		*g_smgr; 
+extern smgr_t		*g_smgr; 
 
 //////////////////////////////////////////////////////
 
@@ -48,7 +28,7 @@ DECLARE_DBG_LEVEL(2);
 /* -------------------------------- */
 
 /*** *INDENT-OFF* ***/
-option_t ns_options [] = {
+option_t g_ns_opts [] = {
     // 1. Define modules
     // ----- name               value       min     max     mode        proc_handler
     OPT_ITEM(all_allow_log,     0,          0,      1,      O_W|O_U,    PROC_MIN_MAX),
@@ -66,6 +46,10 @@ option_t ns_options [] = {
     OPT_ITEM(frag_pkt_drop_cnt, 0,          0,      0,      O_R,        PROC_MIN_MAX),
 
     OPT_ITEM(session_bucket_power,19,       15,     26,     O_W,        PROC_MIN_MAX),
+    OPT_ITEM(session_cnt,       0,          0,      0, 		O_R,        NULL),
+    OPT_ITEM(session_cnt_mine,  0,          0,      0,      O_R,        NULL),
+    OPT_ITEM(session_cnt_remote,0,          0,      0,      O_R,        NULL),
+    OPT_ITEM(session_cnt_local, 0,          0,      0,      O_R,        NULL),
     OPT_ITEM(session_state, 	0,          0,      0,      O_R,        NULL),
     OPT_ITEM(session_max,       0,          0,      60000000,O_W,       PROC_MIN_MAX),
     OPT_ITEM(session_max_warn,  95,        80,      99,     O_W,        PROC_MIN_MAX),
@@ -74,7 +58,7 @@ option_t ns_options [] = {
 
     OPT_ITEM(timeout_udp,       100,        0,      100000, O_W|O_U,    PROC_MIN_MAX),
     OPT_ITEM(timeout_udp_reply, 10,         0,      100000, O_W|O_U,    PROC_MIN_MAX),
-    OPT_ITEM(timeout_icmp,      1,          0,      100000, O_W|O_U,    PROC_MIN_MAX),
+    OPT_ITEM(timeout_icmp,      10,         0,      100000, O_W|O_U,    PROC_MIN_MAX),
     OPT_ITEM(timeout_icmp_reply,3,          1,      300,    O_W|O_U,    PROC_MIN_MAX),
     OPT_ITEM(timeout_unknown,   30,         0,      100000, O_W|O_U,    PROC_MIN_MAX),
 
@@ -94,4 +78,123 @@ option_t ns_options [] = {
 
 };
 /*** *INDENT-ON* ***/
+
+option_t* opt_get_table_entry(uint32_t optidx)
+{
+	if (OPT_MIN >= optidx || optidx >= OPT_MAX) {
+		return NULL;
+	}
+
+	return &g_ns_opts[optidx];
+}
+
+int32_t opt_get_val(uint32_t optidx)
+{
+	option_t* o;
+
+	// for special type of data
+	switch(optidx) {
+	case OPT_IDX(session_cnt):
+		(int32_t)smgr_get_session_count();
+
+	default:
+		break;
+	}
+
+	o = opt_get_table_entry(optidx);
+	if (o == NULL) {
+		return 0;
+	}
+
+	if (o->mode & O_A) {
+		return atomic_read((atomic_t*)&o->val);
+	}
+	
+	return (int32_t)o->val;
+}
+
+void opt_set_val(uint32_t optidx, int32_t val)
+{
+	option_t* o;
+
+	o = opt_get_table_entry(optidx);
+	if (o == NULL) {
+		return;
+	}
+
+	if (!(o->mode & O_W)) {
+		return;
+	}
+
+	if (o->mode & O_A) {
+		return atomic_set((atomic_t*)&o->val, val);
+	}
+	
+	o->val = val;
+}
+
+int32_t opt_show_table(ioctl_data_t *iodata)
+{
+	uint32_t val;
+	char mode[32];
+	int opt_sz, i;
+	option_t *o;
+	int l, buflen;
+	char buf[1024];;
+
+	opt_sz = sizeofa(g_ns_opts);
+	buflen = sizeof(buf);
+
+	// title
+	l = snprintf(buf, buflen, "%-3s %-24s %-5s %-10s %-7s %-10s %-16s %-16s %s\n",
+				 "Idx", "Name", "Mode", "Val", "Min", "Max", "List", "Group", "Desc");
+
+	if (copy_expand(iodata, buf, l, 1024)) {
+		return -1;
+	}
+
+	for (i=OPT_MIN+1; i<OPT_MAX; i++) {
+		val = opt_get_val(i);
+		o = &g_ns_opts[i];
+
+		sprintf(mode, "%s%s",
+				(o->mode & O_U)?"U":"",
+				(o->mode & (O_R|O_A))?"RO":"RW");
+
+		l = snprintf(buf, buflen, "%-3d %-24s %-5s %-10u %-7u %-10u %-16s %-16s %s\n",
+					o->msg_id,
+					o->name,
+					mode,
+					val,
+					o->min,
+					o->max,
+					//ns_get_vlist(o->msg_id),
+					//ns_get_group(o->msg_id),
+					//nls_get_msg(o->msg_id)
+					"0",
+					"0",
+					"0");
+
+		if (copy_expand(iodata, buf, l, 1024)) {
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+uint32_t opt_get_index(char *name) 
+{
+	uint32_t i;
+	option_t *o;
+
+	for (i=OPT_MIN+1; i<OPT_MAX; i++) {
+		o = &g_ns_opts[i];
+
+		if (strcmp(name, o->name) == 0) {
+			return i;
+		}
+	}
+
+}
 

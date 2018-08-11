@@ -16,29 +16,8 @@
 #define IS_IN_THREAD(nstask)       (nstask->flags & TASK_FLAG_IN_THREAD)
 
 
-//#include <netshield_hook.h>
-
 #include <ipv4.h>
 #include <skey.h>
-
-static inline void* ns_get_task(skb_t *skb)
-{
-	if (skb->priv_size == 0)
-		return NULL;
-
-	return RTE_PTR_ADD(skb, sizeof(struct rte_mbuf));
-}
-
-static inline skb_t* ns_get_skb(void *task)
-{
-	return (skb_t*)RTE_PTR_SUB(task, sizeof(struct rte_mbuf));
-}
-
-static inline iph_t* ns_get_iph(void *task)
-{
-	skb_t *skb = ns_get_skb(task);
-	return ip4_hdr(skb);
-}
 
 struct session_s;
 struct rte_mbuf;
@@ -94,5 +73,35 @@ typedef struct ns_task_s {
 
 //#define NS_TASK_SIZE 256
 
+
+/////////////////////////////////////////////
+
+static inline void* ns_get_task(skb_t *skb)
+{
+	if (skb->priv_size == 0)
+		return NULL;
+
+	return RTE_PTR_ADD(skb, sizeof(struct rte_mbuf));
+}
+
+static inline skb_t* ns_get_skb(void *task)
+{
+	return (skb_t*)RTE_PTR_SUB(task, sizeof(struct rte_mbuf));
+}
+
+static inline iph_t* ns_get_ip_hdr(void *task)
+{
+	skb_t *skb = ns_get_skb(task);
+	return ip4_hdr(skb);
+}
+
+static inline void* ns_get_transport_hdr(ns_task_t *nstask)
+{
+	skb_t *skb = ns_get_skb(nstask);
+	return rte_pktmbuf_mtod_offset(skb, void *, nstask->ip_hlen);
+
+    // return mbuf_header_pointer(mbuf, iph->len, sizeof(_udph), &_udph);
+    // return rte_pktmbuf_mtod_offset(mbuf, struct udp_hdr *, ip4_hdrlen(mbuf));
+}
 
 #endif

@@ -546,6 +546,47 @@ out:
 	return ifa;
 }
 
+uint32_t inet_addr_get_port_ip(int af, uint16_t port_id)
+{
+	struct inet_ifaddr *ifa = NULL;
+	struct inet_device *idev = NULL;
+	struct netif_port *dev = netif_port_get(port_id);
+	uint32_t ip;
+
+	if (dev == NULL) {
+		return 0;
+	}
+
+#ifdef INET_ADDR_LOCK
+	rte_rwlock_write_lock(&in_addr_lock);
+#endif
+
+	idev = dev_get_idev(dev);
+	assert(idev);
+
+#define	IN_LOOPBACK(a)		((((long int) (a)) & 0xff000000) == 0x7f000000)
+
+    list_for_each_entry(ifa, &idev->ifa_list, d_list) {
+		if (ifa->addr.in.s_addr == 0 || IN_LOOPBACK(ifa->addr.in.s_addr)) {
+			continue;
+		}
+
+		ip = ifa->addr.in.s_addr;
+		break;
+    }
+
+	//rte_atomic32_inc(&ifa->refcnt);
+
+#ifdef INET_ADDR_LOCK
+	rte_rwlock_write_unlock(&in_addr_lock);
+#endif
+
+	if (idev)
+		idev_put(idev);
+
+	return ntohl(ip);
+}
+
 /**
  * control plane
  */

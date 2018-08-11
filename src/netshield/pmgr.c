@@ -2,16 +2,6 @@
 #include <stdint.h>
 #include <dpdk.h>
 
-#if 0
-#include <include_os.h>
-#include <typedefs.h>
-#include <ns_macro.h>
-#include <session.h>
-#include <commands.h>
-#include <log.h>
-#include <misc.h>
-#endif
-
 #include <ns_typedefs.h>
 #include <macros.h>
 #include <ns_malloc.h>
@@ -24,6 +14,9 @@
 //#include <options.h>
 #include <cmds.h>
 #include <ioctl_policy.h>
+#include <arp_proxy.h>
+#include <utils.h>
+#include <ioctl.h>
 
 
 
@@ -35,13 +28,11 @@ pmgr_t g_pmgr;
 DECLARE_DBG_LEVEL(2);
 
 //////////////////////////////////////////////////////
-uint32_t  hypersplit_load(policyset_t *ps, uint8_t *data);
-void 	 hypersplit_free(hypersplit_t *hs);
-
-void 	pmgr_policyset_free(policyset_t *ps);
-//int32_t fwp_load(ioctl_policyset_t *ioctl_ps, policyset_t *ps);
+uint32_t hypersplit_load(policyset_t *ps, uint8_t *data);
+void 	hypersplit_free(hypersplit_t *hs);
+void 	pmgr_free_policyset(policyset_t *ps);
 int32_t pmgr_commit_new_policy(policyset_t *ps, int32_t nat);
-void pmgr_update_nat_arp(policyset_t *ps);
+void    pmgr_update_nat_arp(policyset_t *ps);
 
 
 /* -------------------------------- */
@@ -49,14 +40,14 @@ void pmgr_update_nat_arp(policyset_t *ps);
 /* -------------------------------- */
 
 
-void pmgr_policyset_hold(policyset_t *ps)
+void pmgr_hold_policyset(policyset_t *ps)
 {
 	if (ps) {
 		atomic_inc(&ps->refcnt);
 	}
 }
 
-void pmgr_policyset_release(policyset_t *ps)
+void pmgr_release_policyset(policyset_t *ps)
 {
 	int32_t ref;
 
@@ -74,10 +65,10 @@ void pmgr_policyset_release(policyset_t *ps)
 		return;
 	}
 
-	pmgr_policyset_free(ps);
+	pmgr_free_policyset(ps);
 }
 
-void pmgr_policyset_free(policyset_t *ps)
+void pmgr_free_policyset(policyset_t *ps)
 {
 	if (!ps) {
 		return;
@@ -119,12 +110,12 @@ policyset_t* pmgr_get_new_policyset(void)
 			g_pmgr.policyset[1] = ps;
 
 			dbg(3, "Alloc new policyset: 0x%p", ps);
-			pmgr_policyset_hold(ps);
+			pmgr_hold_policyset(ps);
 		}
 
 	} ns_rw_unlock(&g_pmgr.lock);
 
-	pmgr_policyset_hold(ps);
+	pmgr_hold_policyset(ps);
 
 	return ps;
 }
@@ -153,6 +144,7 @@ policyset_t* pmgr_get_policyset(int32_t idx)
 	return ps;
 }
 
+#if 0
 policyset_t* pmgr_get_firewall_policyset(void)
 {
 	return pmgr_get_policyset(0);
@@ -162,6 +154,7 @@ policyset_t* pmgr_get_nat_policyset(void)
 {
 	return pmgr_get_policyset(1);
 }
+#endif
 
 uint32_t pmgr_load_security_policy(policyset_t *ps, uint32_t num_policy, uint8_t *data)
 {
@@ -189,7 +182,7 @@ uint32_t pmgr_load_security_policy(policyset_t *ps, uint32_t num_policy, uint8_t
 uint32_t pmgr_load_nat_policy(policyset_t *ps, uint32_t num_policy, uint8_t *data)
 {
 	uint32_t l = 0, nl;
-	nat_policy_t *natp;
+	nat_policy_t *natp, *p;
 
 	l = num_policy * sizeof(nat_policy_t);
 
@@ -203,6 +196,16 @@ uint32_t pmgr_load_nat_policy(policyset_t *ps, uint32_t num_policy, uint8_t *dat
 	ps->num_npolicies = num_policy;
 	ps->npolicies = natp;
 
+	for (int i=0; i<num_policy; i++) {
+		p = &natp[i];
+
+		// init internal data
+		ns_init_lock(&p->nat_lock);
+		p->ip_cnt = -1;
+		p->available_ip = NULL;
+		INIT_LIST_HEAD(&p->ip_list);
+	}
+
 	dbg(5, "NAT Policy Info");
 	dbg(5, "Num of Policies: %d", ps->num_npolicies);
 	dbg(5, "Num of Mem: %d", l);
@@ -210,14 +213,14 @@ uint32_t pmgr_load_nat_policy(policyset_t *ps, uint32_t num_policy, uint8_t *dat
 	return l;
 }
 
-int32_t pmgr_apply_policy(uint8_t *data, size_t len)
+int32_t pmgr_apply_policy(struct ioctl_data_s *iodata)
 {
 	int32_t ret = 0;
 	uint32_t l,t;
 	policyset_t *ps = NULL;
 	ioctl_policyset_t *ioctl_ps;
-
-	ioctl_ps = (ioctl_policyset_t*)data;
+	uint8_t *data;
+	ioctl_ps = (ioctl_policyset_t*)iodata->in;
 
 	ps = ns_malloc_kz(sizeof(policyset_t));
 
@@ -225,7 +228,7 @@ int32_t pmgr_apply_policy(uint8_t *data, size_t len)
 		return -ENOMEM;
 	}
 
-	pmgr_policyset_hold(ps);
+	pmgr_hold_policyset(ps);
 
 	data = (uint8_t*)ioctl_ps->data;
 
@@ -258,7 +261,7 @@ int32_t pmgr_apply_policy(uint8_t *data, size_t len)
 END:
 	if (ret != 0) {
 		dbg(3, "Cancel new policyset: 0x%p", ps);
-		pmgr_policyset_release(ps);
+		pmgr_release_policyset(ps);
 	}
 
 	return ret;
@@ -267,13 +270,12 @@ END:
 // 룰이 적용 된후 NAT arp proxy IP에 대해서 처리 한다.
 void pmgr_update_nat_arp(policyset_t *ps)
 {
-#if 0
 	int32_t i,rcnt;
 	int32_t j;
 	nat_policy_t* natp;
 	ip4_t sip, eip;
-	fw_policy_t *new_rule;
-	int32_t nic;
+	sec_policy_t *new_rule;
+	uint8_t iface_idx = IFACE_IDX_MAX;
 	uint16_t flag;
 
 	ENT_FUNC(3);
@@ -281,33 +283,37 @@ void pmgr_update_nat_arp(policyset_t *ps)
 	// clean it up
 	arpp_clean_ip();
 
-	new_rule = ps->policy;
-	rcnt = ps->num_policy;
+	new_rule = ps->spolicies;
+	rcnt = ps->num_spolicies;
+
+	dbg(4, "NAT rule count: %d", rcnt);
 
 	for (i=0; i<rcnt; i++) {
-
 		if (!(new_rule[i].action & ACT_NAT))
 			continue;
 
 		for (j=0; j<2; j++) {
-			natp = new_rule[i].nat_policy[j];
+			uint32_t npid = new_rule[i].nat_policy_id[j];
 			sip = eip = 0;
 			flag = 0;
 
+			//natp = new_rule[i].nat_policy[j];
+			natp = pmgr_get_nat_policy(ps, npid);
 			if (natp == NULL) {
 				continue; 
 			}
 
+#if 0
 			if ((natp->flags & NATF_DYNAMIC_IP) && 
 				!g_enable_nic_notify) {
 				g_enable_nic_notify = 1;
 			}
-
+#endif
 			if (!(natp->flags & NATF_ARP_PROXY)) {
 				continue;
 			}
 
-			dbg(5, "fwr=0x%p, id=%d, nat[%d]=0x%p, id=%d", 
+			dbg(6, "fwr=%p, id=%d, nat[%d]=%p, id=%d", 
 				&new_rule[i], new_rule[i].rule_id, i, natp, natp?natp->id:-1);
 
 			if (natp->flags & NATF_SNAT_MASK) {
@@ -318,7 +324,13 @@ void pmgr_update_nat_arp(policyset_t *ps)
 
 				sip = natp->nip[0];
 				eip = natp->nip[1];
-				nic = natp->nic;
+
+				// NAT NIC를 지정하지 않은 경우에 NAT IP를 이용해서 자동 생성 한다.
+				if (natp->iface_idx == IFACE_IDX_MAX) {
+					natp->iface_idx = ns_get_nic_idx_by_ip(htonl(natp->nip[0]));
+				}
+
+				iface_idx = natp->iface_idx;
 
 				// if end ip is MASK value, make end ip
 				if (natp->flags & NATF_SNAT_MASKING) {
@@ -334,7 +346,13 @@ void pmgr_update_nat_arp(policyset_t *ps)
 				// DNAT인 경우 목적지 IP에 대해서 arp proxying 한다
 				sip = new_rule[i].range.dst.min;
 				eip = new_rule[i].range.dst.max;
-				nic = new_rule[i].range.nic.min;
+
+				// NAT NIC를 지정하지 않은 경우에 NAT IP를 이용해서 자동 생성 한다.
+				if (new_rule[i].range.nic.min == IFACE_IDX_MAX) {
+					new_rule[i].range.nic.min = ns_get_nic_idx_by_ip(htonl(sip));
+				}
+
+				iface_idx = new_rule[i].range.nic.min;
 				flag |= ARP_PRXY_DNAT;
 			}
 			else {
@@ -344,23 +362,18 @@ void pmgr_update_nat_arp(policyset_t *ps)
 
 			dbg(6, "sip:" IP_FMT ", eip:" IP_FMT , IPH(sip), IPH(eip));
 
-			if (sip == 0 && eip == 0)
+			if (sip == 0 && eip == 0) {
 				continue;
+			}
 			else if (eip == 0) {
 				eip = sip;
 			}
 
-			// NAT NIC를 지정하지 않은 경우에 NAT IP를 이용해서 자동 생성 한다.
-			if (nic == 0) {
-				fwp_resolve_nat_nic(natp);
-			}
-
-			// nid는 0으로 설정하고 나중에 필요할 때 설정 한다.
-			arpp_add_ip(nic, sip, eip, flag);
-			dbg(5, "NAT arp proxy: nic idx: %d, sip:" IP_FMT ",eip:" IP_FMT , natp->nic, IPH(sip), IPH(eip));
+			arpp_add_ip(iface_idx, sip, eip, flag);
+			dbg(5, "NAT arp proxy: iface_idx: %u, sip:" IP_FMT ",eip:" IP_FMT , 
+				natp->iface_idx, IPH(sip), IPH(eip));
 		}
 	}
-#endif
 }
 
 int32_t pmgr_commit_new_policy(policyset_t *ps, int32_t nat)
@@ -381,7 +394,7 @@ int32_t pmgr_commit_new_policy(policyset_t *ps, int32_t nat)
 #endif
 		if (ps) {
 			ps->version = atomic_inc_return(&g_pmgr.version_cnt);
-			pmgr_policyset_hold(ps);
+			pmgr_hold_policyset(ps);
 		}
 
 	} ns_rd_unlock_irq();
@@ -391,7 +404,7 @@ int32_t pmgr_commit_new_policy(policyset_t *ps, int32_t nat)
 	}
 
 	if (old) {
-		pmgr_policyset_release(old);
+		pmgr_release_policyset(old);
 	}
 
 	dbg(0, "Commit New Policy: %p, ver=%u, nat=%d", ps, ps->version, nat);
@@ -399,10 +412,10 @@ int32_t pmgr_commit_new_policy(policyset_t *ps, int32_t nat)
 	return 0;
 }
 
-sec_policy_t* pmgr_get_firewall_policy(policyset_t *ps, uint32_t fwidx)
+sec_policy_t* pmgr_get_security_policy(policyset_t *ps, uint32_t fwidx)
 {
 	if (fwidx >= ps->num_spolicies) {
-		dbg(0, "out of fw range: fwidx=%u, num_spolicies=%u", fwidx, ps->num_spolicies);
+		dbg(5, "out of fw range: fwidx=%u, num_spolicies=%u", fwidx, ps->num_spolicies);
 		return NULL;
 	}
 
@@ -413,24 +426,16 @@ sec_policy_t* pmgr_get_firewall_policy(policyset_t *ps, uint32_t fwidx)
 #endif
 
 	return &ps->spolicies[fwidx];
-
 }
 
 nat_policy_t* pmgr_get_nat_policy(policyset_t *ps, uint32_t natidx)
 {
 	if (natidx >= ps->num_npolicies) {
-		dbg(0, "out of nat range: natidx=%u, num_npolicies=%u", natidx, ps->num_npolicies);
+		dbg(5, "out of nat range: natidx=%u, num_npolicies=%u", natidx, ps->num_npolicies);
 		return NULL;
 	}
-
-#if 0
-	if (index != ps->policy[index].rule_idx) {
-		return NULL;
-	}
-#endif
 
 	return &ps->npolicies[natidx];
-
 }
 
 int32_t pmgr_init(void)
@@ -443,9 +448,9 @@ void pmgr_clean(void)
 {
 	int32_t i;
 
-	for (i=0; i<PMGR_MAX_SET; i++) {
+	for (i=0; i<POLICYSET_MAX; i++) {
 		if (g_pmgr.policyset[i]) {
-			pmgr_policyset_release(g_pmgr.policyset[i]);
+			pmgr_release_policyset(g_pmgr.policyset[i]);
 		}
 
 		g_pmgr.policyset[i] = NULL;
@@ -474,7 +479,7 @@ int32_t pmgr_main(ns_task_t *nstask)
 	pi.dims[DIM_NIC]   = nstask->skey.inic;
 
 	// for Firewall
-	fps = pmgr_get_firewall_policyset();
+	fps = pmgr_get_policyset(POLICYSET_FIREWALL);
 	if (!fps) {
 		dbg(0, "No Firewall Policy !");
 		return NS_DROP;
@@ -483,23 +488,19 @@ int32_t pmgr_main(ns_task_t *nstask)
 	midx = hypersplit_search(&fps->hypersplit, &pi);
 	if (midx == HS_NO_RULE) {
 		// matched default rule
-		dbg(0, "No rule");
+		dbg(0, "No Matched Firewall Rule");
 		goto ERR;
 	}
-	else if ((mp->policy = pmgr_get_firewall_policy(fps, midx)) == NULL) {
+	else if ((mp->policy = pmgr_get_security_policy(fps, midx)) == NULL) {
 		goto ERR;
 	}
 	else if (!(mp->policy->action & ACT_ALLOW)) {
 		goto ERR;
 	}
 
-	dbg(0, "Matched Firewall Rule ID: %u" , midx);
+	dbg(4, "Matched Firewall Rule ID: %u" , midx);
 
-	//mp->id = 0;
-	//mp->idx = midx;
-	//mp->ver = nps->version;
 	mp->policy_set = fps;
-	//mp->flags = MPOLICY_HAVE_POLICY;
 
 	// call smgr_slow_main()
 	append_cmd(nstask, smgr_slow);
@@ -507,22 +508,18 @@ int32_t pmgr_main(ns_task_t *nstask)
 	// for NAT
 	mp = &nstask->mp_nat;
 	bzero(&nstask->mp_nat, sizeof(nstask->mp_nat));
-	nps = pmgr_get_nat_policyset();
+	nps = pmgr_get_policyset(POLICYSET_NAT);
 	if (nps) {
 		midx = hypersplit_search(&nps->hypersplit, &pi);
 		if (midx != HS_NO_RULE &&
-			((mp->policy = pmgr_get_firewall_policy(nps, midx)) != NULL)) {
+			((mp->policy = pmgr_get_security_policy(nps, midx)) != NULL)) {
 
-			dbg(0, "Matched NAT Rule ID: %u" , midx);
-			//mp->id = 0;
-			//mp->idx = midx;
-			//mp->ver = nps->version;
+			dbg(4, "Matched NAT Rule ID: %u" , midx);
 			mp->policy_set = nps;
-			//mp->flags = MPOLICY_HAVE_POLICY;
 		}
 		else {
 			mp->policy = NULL;
-			pmgr_policyset_release(nps);
+			pmgr_release_policyset(nps);
 		}
 	}
 
@@ -530,11 +527,11 @@ int32_t pmgr_main(ns_task_t *nstask)
 
 ERR:
 	if (fps) {
-		pmgr_policyset_release(fps);
+		pmgr_release_policyset(fps);
 	}
 
 	if (nps) {
-		pmgr_policyset_release(nps);
+		pmgr_release_policyset(nps);
 	}
 
 	return ret;

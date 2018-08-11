@@ -99,4 +99,9 @@ inetAddrCopy(void *t, void *f) {
     *d = *s; 
 }
 
+
+// for NetShield
+typedef int (*ARPHOOK)(struct rte_mbuf *mbuf, struct netif_port *port);
+extern ARPHOOK g_ns_arphook;
+
 #endif /* __DPVS_NEIGH_H__ */

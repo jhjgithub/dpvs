@@ -18,7 +18,7 @@
 #
 # Makefile for tools
 #
-SUBDIRS = keepalived ipvsadm dpip
+SUBDIRS = keepalived ipvsadm dpip libhypersplit nsctl
 
 all: config
 	for i in $(SUBDIRS); do $(MAKE) -C $$i || exit 1; done

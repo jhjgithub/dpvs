@@ -1,18 +1,3 @@
-#if 0
-#include <include_os.h>
-
-#include <typedefs.h>
-#include <session.h>
-#include <ns_macro.h>
-#include <ns_cmds.h>
-#include <ns_sysctl.h>
-#include <misc.h>
-#include <options.h>
-#include <ns_malloc.h>
-#include <ns_sysctl.h>
-#include <debug_ctl.h>
-#endif
-
 #include <stdio.h>
 #include <stdint.h>
 

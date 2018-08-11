@@ -20,14 +20,14 @@ LIBS = -ljson-c -lnuma $(HSLIB_DIR)/libhs.a
 LDFLAGS += $(LIB_DIR) -Wl,-rpath=$(HSLIB_DIR)
 
 BIN  = nsctl
-MYSRC = build_hs.c  ioctl.c  main.c  parse_policy_json.c
+MYSRC = build_hs.c  io.c  main.c  parse_policy_json.c
 SRC  = $(MYSRC) common.c sockopt.c
 
 DEP = $(patsubst %.c, $(OBJ_DIR)/%.d, $(SRC))
 OBJ = $(patsubst %.c, $(OBJ_DIR)/%.o, $(SRC))
 
 
-all: $(BIN) run_pc
+all: $(BIN) # run_pc
 
 custom: tag #upload
 

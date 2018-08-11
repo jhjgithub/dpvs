@@ -3,22 +3,6 @@
 #include "dpdk.h"
 #include <ipv4.h>
 
-#if 0
-#include <include_os.h>
-
-#include <typedefs.h>
-#include <log.h>
-#include <extern.h>
-#include <version.h>
-#include <misc.h>
-#include <inline.h>
-#include <khypersplit.h>
-#include <pmgr.h>
-#include <ns_ioctl.h>
-#include <nat.h>
-#include <arp_proxy.h>
-#endif
-
 #include <ns_typedefs.h>
 #include <macros.h>
 #include <cmds.h>
@@ -41,8 +25,6 @@ extern int32_t parse_inet_protocol(ns_task_t *nstask);
 extern int32_t init_task_info(ns_task_t *nstask);
 #if 0
 extern int32_t frag_main(ns_task_t *nstask);
-void ns_register_proc(void);
-void ns_unregister_proc(void);
 #endif
 
 //////////////////////////////////////////////////////
@@ -54,10 +36,10 @@ nscmd_module_t nscmd_module_list[] =
 	//  name            short_name  run                 init                clean           age
 	CMD_ITEM(nsdev,      NSDEV,      NULL,              nsdev_init,         nsdev_clean,    NULL),
 	CMD_ITEM(frag,       FR,         frag_main,          NULL,               NULL,           NULL),
-	CMD_ITEM(arpp,       ARPP,        NULL,          	arpp_init,           arpp_clean,    NULL),
-	CMD_ITEM(nat,        NAT,         nat_main,          NULL,               NULL,          NULL),
 #endif
 
+	CMD_ITEM(arpp,       ARPP,        NULL,          	arpp_init,           arpp_clean,    NULL),
+	CMD_ITEM(nat,        NAT,         nat_main,          NULL,               NULL,          NULL),
 	CMD_ITEM(timer,     TIMER,      NULL,              	nstimer_init,       nstimer_clean,  nstimer_ageing),
 	CMD_ITEM(smgr_timeout,SMGR_TIMEOUT,smgr_timeout,    NULL,               NULL,           NULL),
 	CMD_ITEM(smgr_fast,	SMGR_FAST, 	smgr_fast_main,  	smgr_init,          smgr_clean,     NULL),
@@ -187,12 +169,6 @@ int32_t nscmd_run_cmds(ns_task_t *nstask)
 		if (ret == NS_ACCEPT) {
 			continue;
 		}
-#if 0
-		else if (ret == NS_QUEUE) {
-			dbg(5, "Queued by : %s", cmd->name);
-			break;
-		}
-#endif
 		else if (ret == NS_STOLEN) {
 			dbg(5, "Stolen by : %s", cmd->name);
 			break;
@@ -212,7 +188,7 @@ int32_t nscmd_run_cmds(ns_task_t *nstask)
 	}
 
 	// and then, finalize packet
-	if (ret == NS_STOLEN /*|| ret == NS_QUEUE*/) {
+	if (ret == NS_STOLEN) {
 		return ret;
 	}
 
@@ -231,11 +207,11 @@ int32_t nscmd_run_cmds(ns_task_t *nstask)
 	}
 
 	if (nstask->mp_fw.policy_set) {
-		//pmgr_policyset_release(nstask->mp_fw.policy_set);
+		//pmgr_release_policyset(nstask->mp_fw.policy_set);
 	}
 
 	if (nstask->mp_nat.policy_set) {
-		//pmgr_policyset_release(nstask->mp_nat.policy_set);
+		//pmgr_release_policyset(nstask->mp_nat.policy_set);
 	}
 
 	if (ret == NS_DEL_SESSION) {
@@ -339,12 +315,6 @@ int32_t nscmd_init_module(void)
 		ns_err("Cannot register timer");
 	}
 
-
-#if 0
-	// 3. sysctl 관련 등록
-	ns_register_proc();
-#endif
-
 	return 0;
 }
 
@@ -352,12 +322,6 @@ void nscmd_clean_module(void)
 {
 	int32_t i;
 	nscmd_module_t *c;
-
-#if 0
-	// 1. sysctl 제거
-	ns_unregister_proc();
-
-#endif
 
 	// 2. timer 제거
 	dpvs_timer_reset(&g_ns_timer, true);

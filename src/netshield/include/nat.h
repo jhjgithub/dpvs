@@ -2,6 +2,7 @@
 #define __NAT_H__
 
 #include <arp_proxy.h>
+#include <rte_bitmap.h>
 
 struct session_s;
 struct ns_task_s;
@@ -18,7 +19,7 @@ struct matched_policy_s;
 // port 사용여부를 나타내는 bitmap 데이터 구조체
 typedef struct nat_port_s {
 	uint32_t 	start_offset;
-	uint8_t 	*bitmap;
+	uint8_t 	*port_bitmap;
 } nat_port_t;
 
 // NAT IP object
@@ -62,7 +63,7 @@ typedef struct nat_policy_s {
 	uint32_t	id;			///< nat rule id, this is not unique number
 	uint32_t	flags;		///< nat flags
 
-	uint32_t 	nic; 		///< NIC Index (0: any, 1 ~)
+	uint8_t 	iface_idx;	///< NIC Index (IFACE_IDX_MAX: any, 0 ~)
 	ip_t		nip[2];		///< nat ip range 	(0: start, 1: end), host order, MASK_IP_ONLY, RDIR 인 경우 mask값
 	uint16_t	nport[2];	///< nat port range	(0: start, 1: end)
 

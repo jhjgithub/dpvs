@@ -1,20 +1,10 @@
 #include <stdio.h>
 #include <stdint.h>
-#include <dpdk.h>
-#include <ipv4.h>
-
-#if 0
-#include <include_os.h>
-
-#include <typedefs.h>
-#include <ns_task.h>
-#include <session.h>
-#include <log.h>
-#include <ns_macro.h>
-#include <ns_malloc.h>
-#include <misc.h>
-#include <commands.h>
-#endif
+#include <netinet/ip.h>
+#include <netinet/udp.h>
+#include <netinet/tcp.h>
+#include <linux/icmp.h>
+#include <linux/icmpv6.h>
 
 #include <ns_typedefs.h>
 #include <macros.h>
@@ -28,8 +18,10 @@
 #include <options.h>
 #include <ns_malloc.h>
 #include <pmgr.h>
-
-#define	IS_HW_CSUM(nstask) 	(nstask->pkt->ip_summed == CHECKSUM_PARTIAL)
+#include <utils.h>
+#include <cmds.h>
+#include <bitop.h>
+#include <cksum.h>
 
 DECLARE_DBG_LEVEL(2);
 
@@ -136,11 +128,11 @@ void nat_clean_ip_obj(nat_policy_t* natp)
 		nip = list_entry(natp->ip_list.next, nat_ip_t, list);
 		list_del_init(&nip->list);
 
-		if (nip->port.bitmap)
-			ns_free(nip->port.bitmap);
+		if (nip->port.port_bitmap) {
+			ns_free(nip->port.port_bitmap);
+		}
 
 		ns_free(nip);
-
 	}
 
 	natp->ip_cnt = -1;
@@ -157,6 +149,7 @@ int32_t nat_clean_bitmap(sec_policy_t *fwp, int32_t cnt)
 		if (!(fwp[i].action & ACT_NAT)) 
 			continue;
 
+		np = pmgr_get_nat_policy(mp_nat->policy_set, fwp->nat_policy_id[0]);
 		np = nat_get_policy(fwp[i].nat_policy_id[0]);
 		if (np != NULL) {
 			nat_clean_ip_obj(np);
@@ -200,7 +193,6 @@ int32_t nat_init_ip_obj(nat_policy_t *natp)
 
 	ENT_FUNC(3);
 
-#if 0
 	natp->available_ip = NULL;
 	INIT_LIST_HEAD(&natp->ip_list);
 
@@ -212,14 +204,14 @@ int32_t nat_init_ip_obj(nat_policy_t *natp)
 	if (natp->flags & NATF_DYNAMIC_IP) {
 		// NIC가 동적 IP인 경우 룰을 사용 할 때 IP를 얻어서 사용한다.
 		// 만일 사용중에 NIC의 IP가 변경 되는 경우 nic notifier에서 변경된 IP를 처리 한다. 
-		//nic_ip = ns_get_nic_ip(natp->nic);
+		nic_ip = ns_get_nic_ip(natp->iface_idx);
 
 		// 이경우는 NIC에 아직 IP가 없다.  // 그러므로 NAT를 할 수 없다.
 		if (nic_ip == 0)
 			return -1;
 
 		// set ip
-		natp->nip[0].v4 = natp->nip[1].v4 = nic_ip;
+		natp->nip[0] = natp->nip[1] = nic_ip;
 		ip_cnt = 1;
 	}
 	else {
@@ -251,6 +243,7 @@ int32_t nat_init_ip_obj(nat_policy_t *natp)
 		list_add_tail(&nip->list, &natp->ip_list);
 
 		if (!(natp->flags & NATF_DYNAMIC_IP)) {
+			// FXIME:
 			ns_inc_ip(&cur_ip);
 		}
 	}
@@ -263,14 +256,14 @@ int32_t nat_init_ip_obj(nat_policy_t *natp)
 		// 최초 obj 저장
 		natp->available_ip = list_entry(natp->ip_list.next, nat_ip_t, list);
 	}
-#endif
+
 	return 0;
 }
 
 int32_t nat_reserve_port(nat_policy_t *natp, nat_ip_t *nip, uint16_t *new_port)
 {
 	int32_t ret=0;
-	uint16_t offset;
+	uint16_t portidx;
 
 	ENT_FUNC(3);
 
@@ -286,7 +279,6 @@ int32_t nat_reserve_port(nat_policy_t *natp, nat_ip_t *nip, uint16_t *new_port)
 	끝점에 오면 다시 시작점으로 돌려서 검색한다.
 	*/
 
-#if 0
 	if (nip == NULL)
 		return -1;
 
@@ -301,86 +293,67 @@ int32_t nat_reserve_port(nat_policy_t *natp, nat_ip_t *nip, uint16_t *new_port)
 		return -1;
 	}
 
-	if (nip->port.bitmap == NULL) {
-		nip->port.bitmap = ns_malloc_az(NAT_PORT_BITMAP_SIZE);
-		ns_mem_assert(nip->port.bitmap, "port_bitmap", return -1);
+	if (nip->port.port_bitmap == NULL) {
+		//nip->port.port_bitmap = ns_malloc_az(NAT_PORT_BITMAP_SIZE);
+		nip->port.port_bitmap = ns_malloc_az(nip->port_cnt);
+		ns_mem_assert(nip->port.port_bitmap, "port_bitmap", return -1);
 
-		nip->port.start_offset = natp->nport[0];
+		// clear all port
+		//memset(nip->port.port_bitmap, 0, NAT_PORT_BITMAP_SIZE);
+		memset(nip->port.port_bitmap, 0, nip->port_cnt);
 
-		// set all usable
-		// '1' 인경우 사용 가능하다는 의미 이다.
-		memset(nip->port.bitmap, 0xff, NAT_PORT_BITMAP_SIZE);
+		//nip->port.start_offset = natp->nport[0];
+		nip->port.start_offset = 0;
 	}
 
 	// 새로운 포트 값이 0이면, (새로운 포트 할당 요구)
 	if (*new_port == 0) {
-
-START_SEARCH:
-
-		// 	- 마지막 포트 번호에 도달하면, 처음부터 찾는다.
-		if (natp->nport[1] < nip->port.start_offset) {
-			nip->port.start_offset = natp->nport[0];
-		}
-
-		// find_next_bit()을 호출하여 bit(할당 가능한 포트번호)를 찾는다.
+		// 사용중이지 않은 bit(할당 가능한 포트번호)를 찾는다.
 		//	- 못찾는 경우 (size 값을 리턴했으면)
 		// zero based index
-		offset = (uint16_t) find_next_bit((const unsigned long*)nip->port.bitmap, 
-										  (int)natp->nport[1]+1, (int)nip->port.start_offset);
+		portidx = (uint16_t)bitop_find_next_zero_bit_wrap_around((const unsigned long*)nip->port.port_bitmap, 
+																(int)natp->nport[1]+1, (int)nip->port.start_offset);
 
-		if (natp->nport[0] <= offset && offset <= natp->nport[1]) {
-
+		if (portidx < nip->port_cnt) {
 			// lock로 보호 되기 때문에 atomic 연산이 필요 없다.
-			clear_bit((int32_t)offset, (volatile unsigned long *)nip->port.bitmap);
-			*new_port = offset;
+			bitop_set_bit((int32_t)portidx, nip->port.port_bitmap);
+			*new_port = portidx + natp->nport[0];
+			nip->port.start_offset = portidx + 1;
 
 			if (nip->free_cnt)
 				nip->free_cnt --;
 
-			if (offset < natp->nport[1]) {
-				nip->port.start_offset = offset + 1;
-			}
-			else {
-				nip->port.start_offset = natp->nport[0];
-				dbg(0, "out of range: %u, %u", offset, natp->nport[1]);
-			}
-
 			dbg(5, "NAT info: new_port=%u, start_offset=%u, port=%u-%u, free_ports=%u, port_cnt=%u", 
-				offset, 
+				*new_port, 
 				nip->port.start_offset,
 				natp->nport[0], natp->nport[1], 
 				nip->free_cnt, nip->port_cnt);
 		}
-		else if (nip->port.start_offset != natp->nport[0]) {
-			dbg(0, "go back to begin: %u", nip->port.start_offset);
-
-			// 검색에 실패하면, 무조건 처음 위치로 설정하고 재검색
-			nip->port.start_offset = natp->nport[0];
-
-			// 재 검색 한다.
-			goto START_SEARCH;
-		}
 		else {
-			// 이경우는 offset을 처음으로 설정하고도 포트를 찾지 못했다.
-			ret = -1;
-
-			dbg(0, "No more available port: NAT IP="IP_FMT ", port: %u-%u, offset=%u, port_cnt=%u, free_cnt=%u", 
+			// 포트를 찾지 못했다.
+			dbg(0, "No more available port: NAT IP="IP_FMT ", port: %u-%u, start_offset=%u, port_cnt=%u, free_cnt=%u", 
 				IPH(nip->ip), 
 				natp->nport[0], 
 				natp->nport[1], 
-				offset, 
+				nip->port.start_offset, 
 				nip->port_cnt, nip->free_cnt);
+
+			nip->port.start_offset = 0;
+			ret = -1;
 		}
 
 	}
 	else {
-		//	clear_bit()를 호출하여 그 포터 번호를 사용중으로 설정한다.
-		clear_bit(*new_port, (volatile unsigned long *)nip->port.bitmap);
+#if 0
+		//	set_bit()를 호출하여 그 포터 번호를 사용중으로 설정한다.
+		bitop_set_bit(*new_port, nip->port.port_bitmap);
 
 		if (nip->free_cnt)
 			nip->free_cnt --;
-	}
+#else
+		ret = -1;
 #endif
+	}
 
 	return ret;
 }
@@ -389,7 +362,6 @@ int32_t nat_reserve_ip_port(nat_policy_t *natp, session_t *si, ip_t *new_ip, uin
 {
 	nat_ip_t *nip = NULL;
 	int32_t ret = -1, found=0;
-#if 0
 	ip4_t sip =  si->skey.src;
 
 	ENT_FUNC(3);
@@ -438,7 +410,7 @@ int32_t nat_reserve_ip_port(nat_policy_t *natp, session_t *si, ip_t *new_ip, uin
 	if (ret == 0) {
 		*new_ip = nip->ip;
 	}
-#endif
+
 	return ret;
 }
 
@@ -461,7 +433,6 @@ int32_t nat_bind_snat_info(session_t *si, nat_policy_t *natp, ip_t *new_ip, uint
 {
 	int32_t ret = 0;
 
-#if 0
 	ENT_FUNC(3);
 
 	switch (natp->flags & NATF_SNAT_MASK) {
@@ -491,7 +462,6 @@ int32_t nat_bind_snat_info(session_t *si, nat_policy_t *natp, ip_t *new_ip, uint
 		ns_err("Unknown SNAT flags: 0x%x", natp->flags);
 		break;
 	}
-#endif
 
 	return ret;
 }
@@ -500,7 +470,6 @@ int32_t nat_bind_dnat_info(session_t *si, nat_policy_t *natp, int32_t inic, ip_t
 {
 	int32_t ret = 0;
 
-#if 0
 	ENT_FUNC(3);
 
 	switch( natp->flags & NATF_DNAT_MASK) {
@@ -546,7 +515,6 @@ int32_t nat_bind_dnat_info(session_t *si, nat_policy_t *natp, int32_t inic, ip_t
 		ns_err("Unknown DNAT flags: 0x%x", natp->flags);
 		break;
 	}
-#endif
 
 	return ret;
 }
@@ -557,7 +525,7 @@ int32_t nat_do_binding(session_t* si, nat_policy_t *natp, int32_t inic, ip_t *ne
 
 	ENT_FUNC(3);
 
-	dbg(6, "RuleID=%u, flags=0x%x, nat_ip[0]=" IP_FMT ",nat_ip[1]=" IP_FMT ",port=%d ~ %d, ip_cnt=%d",
+	dbg(6, "RuleID=%u, flags=0x%x, nat_ip[0]=" IP_FMT ", nat_ip[1]=" IP_FMT ", port=%d ~ %d, ip_cnt=%d",
 		natp->id,
 		natp->flags,
 		IPH(natp->nip[0]), 
@@ -576,10 +544,8 @@ int32_t nat_do_binding(session_t* si, nat_policy_t *natp, int32_t inic, ip_t *ne
 			return ret;
 	}
 
-#if 0
 	*new_ip = 0;
 	*new_port = 0;
-#endif
 
 	if (natp->flags & NATF_SNAT_MASK) {
 		ret = nat_bind_snat_info(si, natp, new_ip, new_port);
@@ -650,9 +616,9 @@ int32_t nat_bind_info(session_t* si, mpolicy_t *mp_nat, nic_id_t inic)
 	return ret;
 }
 
+#if 0
 int32_t nat_update_used_nat_info(session_t* si)
 {
-#if 0
 	nat_policy_t* natp = NULL;
 	nat_ip_t* nip;
 	ip4_t ip;
@@ -665,7 +631,7 @@ int32_t nat_update_used_nat_info(session_t* si)
 
 	natp = si->mrule.nat->nat_policy[0];
 
-	// port bitmap을 사용하는 경우는 아래의 경우에 한정한다.
+	// port port_bitmap을 사용하는 경우는 아래의 경우에 한정한다.
 	if (!(si->action & ACT_NAT_RELEASE) || !natp) {
 		return -1;
 	}
@@ -673,7 +639,7 @@ int32_t nat_update_used_nat_info(session_t* si)
 	// 각종 정보를 업데이트 한다.
 	// 1. ip_obj를 생성 한다.
 	// 2. 현재 사용중인 port를 표시 한다.
-	// 	  이때, bitmap의 위치가 유동적이므로 이를 조정 해야 한다.
+	// 	  이때, port_bitmap의 위치가 유동적이므로 이를 조정 해야 한다.
 
 	ns_rw_lock_irq(&natp->nat_lock) {
 
@@ -697,10 +663,10 @@ int32_t nat_update_used_nat_info(session_t* si)
 
 	// 룰이 마지막으로 사용된 시간
 	si->mrule.nat->timestamp = wise_get_time();
-#endif
 
 	return 0;
 }
+#endif
 
 int32_t nat_release_info(session_t* si, mpolicy_t* mp)
 {
@@ -728,11 +694,9 @@ int32_t nat_release_info(session_t* si, mpolicy_t* mp)
 		port = si->natinfo.port[i];
 		p = pmgr_get_nat_policy(mp->policy_set, fwp->nat_policy_id[i]);
 
-#if 0
 		if (ip == 0 || p == NULL) {
 			continue;
 		}
-
 
 		ns_rw_lock_irq(&p->nat_lock);
 		nip = find_ip_obj_by_ip(p, ip);
@@ -740,19 +704,18 @@ int32_t nat_release_info(session_t* si, mpolicy_t* mp)
 		if (nip == NULL) {
 			dbg(0, "Could not find ip obj: "IP_FMT ", port=%u", IPH(ip), port);
 		}
-		else if (nip->port.bitmap) {
-			set_bit(port, (volatile unsigned long *)nip->port.bitmap);
+		else if (nip->port.port_bitmap) {
+			bitop_clear_bit(port, (volatile unsigned long *)nip->port.port_bitmap);
 			nip->free_cnt ++;
 
 			dbg(5, "si=0x%p, Release ip=" IP_FMT ", port=%u, free_cnt=%d", 
 				si, IPH(ip), port, nip->free_cnt);
 		}
 		else {
-			dbg(0, "port bitmap is NULL, si=0x%p, release ip=" IP_FMT ", port=%u", si, IPH(ip), port);
+			dbg(0, "port port_bitmap is NULL, si=0x%p, release ip=" IP_FMT ", port=%u", si, IPH(ip), port);
 		}
 
 		ns_rw_unlock_irq(&p->nat_lock);
-#endif
 	}
 
 	return 0;
@@ -767,11 +730,10 @@ int32_t nat_port_csum(iph_t* iph, int32_t is_hw_csum, ip4_t new_ip, ip4_t old_ip
 	if (csum == NULL) 
 		return -1;
 
-#if 0
-	if (iph->protocol == IPPROTO_ICMP) {
+	if (iph->next_proto_id == IPPROTO_ICMP) {
 		*csum = ns_csum(old_port ^ 0xffff, new_port, *csum);
 	}
-	else if (*csum == 0 && iph->protocol == IPPROTO_UDP) {
+	else if (*csum == 0 && iph->next_proto_id == IPPROTO_UDP) {
 		// FIXME: option 기능으로 추가 예정
 		// UDP 인경우 checksum 값이 0이면 checksum을 계산하지 않는다는 의미이다.
 		// nothing
@@ -789,7 +751,6 @@ int32_t nat_port_csum(iph_t* iph, int32_t is_hw_csum, ip4_t new_ip, ip4_t old_ip
 	else {
 		*csum = ns_csum(~old_ip, new_ip, ns_csum(old_port ^ 0xffff, new_port, *csum));
 	}
-#endif
 
 	return 0;
 }
@@ -812,7 +773,7 @@ int32_t nat_sw_checksum(skb_t* skb, ip4_t newip, int32_t is_chg_dst)
 	 ****************************************************/
 #if 0
 	iph_t *iph = ns_iph(skb);
-	tph_t *tph = ns_tcph(skb);
+	tcph_t *tph = ns_tcph(skb);
 	unsigned int tcphoff = iph->ihl * 4;
 	uint16_t tt;
 
@@ -827,13 +788,13 @@ int32_t nat_sw_checksum(skb_t* skb, ip4_t newip, int32_t is_chg_dst)
 
 	// pseudo header 포함한 tcp header에 대한 checksum 계산.
 	if (is_chg_dst) {
-		tph->check = csum_tcpudp_magic(iph->saddr, newip,
+		tph->check = csum_tcpudp_magic(iph->src_addr, newip,
 									   skb->len - tcphoff,
 									   iph->protocol,
 									   skb->csum);
 	}
 	else {
-		tph->check = csum_tcpudp_magic(newip, iph->daddr,
+		tph->check = csum_tcpudp_magic(newip, iph->dst_addr,
 									   skb->len - tcphoff,
 									   iph->protocol,
 									   skb->csum);
@@ -850,19 +811,20 @@ int32_t nat_sw_checksum(skb_t* skb, ip4_t newip, int32_t is_chg_dst)
 int32_t nat_apply_icmperr(ns_task_t* nstask, int32_t is_dnat) 
 {
 	int32_t ret = 0;
-
-#if 0
-	iph_t *iph = (iph_t *)(ns_raw(nstask->pkt) + sizeof(ich_t));
+	iph_t *iph;
 	ip4_t *p_oldip=NULL, newip=0;
 	uint16_t *p_oldport=NULL, newport=0, oldport=0, *p_check=NULL;
 	skey_t *skey;
 	uint8_t* h;
 	natinfo_t *n;
 
+	h = (uint8_t*)ns_get_transport_hdr(nstask);
+	iph = (iph_t*)(h + sizeof(icmph_t));
+
 	DUMP_PKT(4, iph, nstask->skey.inic);
 
 	skey = &nstask->si->skey;
-	h = (uint8_t* )iph + (iph->ihl << 2);
+	h = (uint8_t* )iph + ((iph->version_ihl & 0xf) << 2);
 	n = &nstask->si->natinfo;
 
 	if (is_dnat) {
@@ -874,21 +836,21 @@ int32_t nat_apply_icmperr(ns_task_t* nstask, int32_t is_dnat)
 		newport = skey->sp;
 	}
 
-	p_oldip   = is_dnat ? &iph->daddr : &iph->saddr;
+	p_oldip   = is_dnat ? &iph->dst_addr : &iph->src_addr;
 
 	// change ip/port and its checksum
-	switch (iph->protocol) {
+	switch (iph->next_proto_id) {
 	case IPPROTO_TCP:
-		p_oldport = is_dnat ? &((tph_t*)h)->dest : &((tph_t*)h)->source;
-		p_check   = &((tph_t*)h)->check;
+		p_oldport = is_dnat ? &((tcph_t*)h)->dest : &((tcph_t*)h)->source;
+		p_check   = &((tcph_t*)h)->check;
 		break;
 	case IPPROTO_UDP:
-		p_oldport = is_dnat ? &((uph_t*)h)->dest : &((uph_t*)h)->source;
-		p_check   = &((uph_t*)h)->check;
+		p_oldport = is_dnat ? &((udph_t*)h)->dest : &((udph_t*)h)->source;
+		p_check   = &((udph_t*)h)->check;
 		break;
 	case IPPROTO_ICMP:
-		p_oldport = &((ich_t*)h)->un.echo.id;
-		p_check   = &((ich_t*)h)->checksum;
+		p_oldport = &((icmph_t*)h)->un.echo.id;
+		p_check   = &((icmph_t*)h)->checksum;
 		break;
 	default:
 		dbg(5, "ICMP ERR: Unknown");
@@ -913,27 +875,28 @@ int32_t nat_apply_icmperr(ns_task_t* nstask, int32_t is_dnat)
 	if (ISREQ(nstask)) {
 		skey_t* k = &nstask->skey;
 		iph_t* org_iph;
-		ich_t* ic;
+		icmph_t* ic;
+		skb_t *skb;
 
-		org_iph = ns_iph(nstask->pkt);
-		ic = ns_icmph(nstask->pkt);
+		skb = ns_get_skb(nstask);
+		org_iph = ns_iph(skb);
+		ic = (icmph_t*)ns_get_transport_hdr(nstask);
 
 		ns_warn("ICMP ERR pkt in NAT:" IP_FMT "->" IP_FMT ":type=%d, code=%d:: payload: " IP_FMT"->" IP_FMT "(%s)",
-				IPN(org_iph->saddr), IPN(org_iph->daddr),
+				IPN(org_iph->src_addr), IPN(org_iph->dst_addr),
 				ic->type, ic->code,
-				IPN(iph->saddr),
-				IPN(iph->daddr),
+				IPN(iph->src_addr),
+				IPN(iph->dst_addr),
 				ns_get_protocol_name(k->proto));
 	} 
 	else {
-		iph->check = ns_csum(~(*p_oldip), newip, iph->check);
+		iph->hdr_checksum = ns_csum(~(*p_oldip), newip, iph->hdr_checksum);
 
 		// ip 변경
 		*p_oldip = newip;
 	}
 
 	DUMP_PKT(0, iph, nstask->skey.inic);
-#endif
 
 	return ret;
 }
@@ -941,19 +904,25 @@ int32_t nat_apply_icmperr(ns_task_t* nstask, int32_t is_dnat)
 int32_t nat_apply(ns_task_t* nstask, int32_t is_chg_dst, int32_t is_dnat)
 {
 	int32_t ret = 0;
-#if 0
-	iph_t *iph = ns_iph(nstask->pkt);
-	tph_t *tph = ns_tcph(nstask->pkt);
-	uph_t *uph = ns_udph(nstask->pkt);
-	ich_t *ich = ns_icmph(nstask->pkt);
+	iph_t *iph;
+	struct tcp_hdr *tph;
+	struct udp_hdr *uph;
+	struct icmphdr *ich;
 	ip4_t *p_oldip=NULL, newip=0;
 	uint16_t *p_oldport=NULL, newport=0, oldport=0, *p_check=NULL;
 	skey_t *skey;
 	natinfo_t *n;
+	skb_t *skb;
 		
-	if (nstask->pkt->pkt_type == PACKET_OTHERHOST) {
+	skb = ns_get_skb(nstask);
+	iph = ns_get_ip_hdr(nstask);
+	tph = ns_get_transport_hdr(nstask);
+	uph = (void*)tph;
+	ich = (void*)tph;
+
+	if (skb->packet_type == ETH_PKT_OTHERHOST) {
 		dbg(5, "This packet is OTHERHOST");
-		nstask->pkt->pkt_type = PACKET_HOST;
+		skb->packet_type = ETH_PKT_HOST;
 	}
 
 	skey = &nstask->si->skey;
@@ -980,18 +949,19 @@ int32_t nat_apply(ns_task_t* nstask, int32_t is_chg_dst, int32_t is_dnat)
 		}
 	}
 
-	p_oldip   = is_chg_dst ? &iph->daddr : &iph->saddr;
+	p_oldip   = is_chg_dst ? &iph->dst_addr : &iph->src_addr;
 
 	// change ip/port and its checksum
-	switch (iph->protocol) {
+	switch (iph->next_proto_id) {
 	case IPPROTO_TCP:
-		p_oldport = is_chg_dst ? &tph->dest  : &tph->source;
-		p_check   = &tph->check;
+		//tcph_t
+		p_oldport = is_chg_dst ? &tph->dst_port  : &tph->src_port;
+		p_check   = &tph->cksum;
 		break;
 
 	case IPPROTO_UDP:
-		p_oldport = is_chg_dst ? &uph->dest  : &uph->source;
-		p_check   = &uph->check;
+		p_oldport = is_chg_dst ? &uph->dst_port  : &uph->src_port;
+		p_check   = &uph->dgram_cksum;
 		break;
 
 	case IPPROTO_ICMP:
@@ -1020,18 +990,15 @@ int32_t nat_apply(ns_task_t* nstask, int32_t is_chg_dst, int32_t is_dnat)
 
 	// port checksum
 	if (p_check) {
-#if 1
+//#define	IS_HW_CSUM(nstask) 	(nstask->pkt->ip_summed == CHECKSUM_PARTIAL)
+#define IS_HW_CSUM(nstask) 0
 		nat_port_csum(iph, IS_HW_CSUM(nstask), newip, *p_oldip, newport, oldport, p_check);
-
-#else
-		nat_sw_checksum(nstask->pkt, newip, is_chg_dst);
-#endif
+		//nat_sw_checksum(skb, newip, is_chg_dst);
 	}
 
 	// ip change and checksum
-	iph->check = ns_csum(~(*p_oldip), newip, iph->check);
+	iph->hdr_checksum = ns_csum(~(*p_oldip), newip, iph->hdr_checksum);
 	*p_oldip = newip;
-#endif
 
 	return ret;
 }
@@ -1059,7 +1026,7 @@ int32_t nat_apply(ns_task_t* nstask, int32_t is_chg_dst, int32_t is_dnat)
 //  ---+---+---
 //   1 | 1 | 0
 //  ---+---+---
-inline int32_t nat_truth_table(int32_t dnat, int32_t res)
+static inline int32_t nat_truth_table(int32_t dnat, int32_t res)
 {
 	// change to boolean value
 	dnat &= 0x01;
@@ -1071,8 +1038,8 @@ inline int32_t nat_truth_table(int32_t dnat, int32_t res)
 int32_t nat_main(ns_task_t* nstask)
 {
 	int32_t ret = NS_ACCEPT;
-#if 0
 	int32_t is_chg_dst, is_dnat;
+	skb_t *skb;
 
 	ENT_FUNC(3);
 
@@ -1080,11 +1047,11 @@ int32_t nat_main(ns_task_t* nstask)
 		return NS_DROP;
 	}
 
-	DUMP_PKT(0, ns_iph(nstask->pkt), nstask->skey.inic);
+	skb = ns_get_skb(nstask);
+	DUMP_PKT(0, ns_iph(skb), nstask->skey.inic);
 
 	// Both NAT
 	if (nstask->si->action & ACT_BNAT) {
-
 #if 0
 		// do SNAT
 		is_dnat = 0;
@@ -1141,7 +1108,7 @@ int32_t nat_main(ns_task_t* nstask)
 		if (!(nstask->flags & TASK_FLAG_HOOK_POST_ROUTING)) {
 			// call nat_main()
 			append_cmd(nstask, nat);
-			ret = NS_QUEUE;
+			ret = NS_STOLEN;
 		}
 
 #endif
@@ -1164,17 +1131,15 @@ int32_t nat_main(ns_task_t* nstask)
 		else {
 			// call nat_main()
 			append_cmd(nstask, nat);
-			ret = NS_QUEUE;
+			ret = NS_STOLEN;
 		}
 	}
 	else {
 		dbg(5, "No actoin ");
 	}
 
-#endif
 END:
-	//DUMP_PKT(0, ns_iph(nstask->pkt), nstask->skey.inic);
-
+	DUMP_PKT(0, ns_iph(skb), nstask->skey.inic);
 
 	return ret;
 }

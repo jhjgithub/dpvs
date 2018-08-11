@@ -39,6 +39,9 @@
 #include <hypersplit.h>
 #include <rfg.h>
 #include <parse_policy_json.h>
+#include <io.h>
+
+#define IFACE_IDX_MAX 	UCHAR_MAX
 
 // https://json-c.github.io/json-c/json-c-0.10/doc/html/json__object_8h.html
 
@@ -240,15 +243,18 @@ int parse_nat_option(nat_policy_t *natp, jobj_t *jopt)
 
 uint32_t parse_nic_index(jobj_t *j_nic)
 {
-	uint32_t ifidx = 0;
+	uint32_t ifidx = IFACE_IDX_MAX;
+	int rc;
 
 	char *ifname = (char *)json_object_get_string(j_nic);
 
 	if (ifname && strcmp(ifname, "any") != 0) {
-		ifidx = if_nametoindex((const char *)ifname);
-	}
+		rc = nsctl_get_iface_idx(ifname, (int*)&ifidx);
 
-	//printf("nat nic: %s, %d \n", ifname, ifidx);
+		if (rc != 0) {
+			ifidx = IFACE_IDX_MAX;
+		}
+	}
 
 	return ifidx;
 }
@@ -258,7 +264,7 @@ void parse_nic_range(range32_t *r, jobj_t *j)
 	jobj_t *i1 = NULL, *i2 = NULL;
 
 	r->min = 0;
-	r->max = 0;
+	r->max = IFACE_IDX_MAX;
 
 	if ((i1 = json_object_array_get_idx(j, 0))) {
 		r->min = parse_nic_index(i1);
@@ -268,8 +274,9 @@ void parse_nic_range(range32_t *r, jobj_t *j)
 		r->max = parse_nic_index(i2);
 	}
 
-	if (r->max == 0) {
-		r->max = 255;
+	// XXX: min 값을 조정하지 않으면 hypersplit build시 에러 발생
+	if (r->min == IFACE_IDX_MAX) {
+		r->min = 0;
 	}
 
 	if (i1) {
@@ -307,7 +314,7 @@ int parse_nat(jobj_t *j_nat, nat_policy_t *n)
 	}
 
 	if (json_object_object_get_ex(j_nat, "nic", &j)) {
-		n->nic = parse_nic_index(j);
+		n->iface_idx = parse_nic_index(j);
 	}
 	//json_object_put(j);
 
@@ -478,6 +485,10 @@ int load_json_policy(jobj_t *j_fw_root, policy_json_t *p, int isnat)
 				goto ERR;
 			}
 
+			// reset
+			f->nat_policy_id[0] = UINT_MAX;
+			f->nat_policy_id[1] = UINT_MAX;
+
 			if (used_tmp_np & 0x01) {
 				if ((sz_np - cur_np) < 1) {
 					sz_np *= 2;
@@ -485,6 +496,7 @@ int load_json_policy(jobj_t *j_fw_root, policy_json_t *p, int isnat)
 				}
 
 				memcpy(&np[cur_np], &np_tmp[0], sizeof(nat_policy_t));
+
 				f->nat_policy_id[0] = cur_np;
 				cur_np ++;
 			}
@@ -496,6 +508,7 @@ int load_json_policy(jobj_t *j_fw_root, policy_json_t *p, int isnat)
 				}
 
 				memcpy(&np[cur_np], &np_tmp[1], sizeof(nat_policy_t));
+
 				f->nat_policy_id[1] = cur_np;
 				cur_np ++;
 			}

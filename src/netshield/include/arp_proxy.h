@@ -5,7 +5,7 @@ typedef struct arp_proxy_ip_s {
 	//rcu_head_t 	rcu;
 	list_head_t list;
 
-	int32_t 	ifidx;
+	uint8_t 	ifidx;
 	ip4_t 		sip;
 	ip4_t 		eip;
 
@@ -32,13 +32,10 @@ typedef struct arp_proxy_s {
 } arp_proxy_t;
 
 ///////////////////////////////////////////
-#ifdef __KERNEL__
 
-int32_t arpp_rcv(skb_t *skb, netdev_t *dev, struct packet_type *pt, netdev_t *orig_dev);
-int32_t arpp_add_ip(int32_t ifidx, ip4_t sip, ip4_t eip, uint16_t flag);
+int32_t arpp_add_ip(uint8_t ifidx, ip4_t sip, ip4_t eip, uint16_t flag);
 void 	arpp_clean_ip(void);
 int32_t arpp_init(void);
 void 	arpp_clean(void);
-#endif
 
 #endif

@@ -240,6 +240,7 @@ typedef __uint128_t 		ip_t;
 #define ETH_ALEN 			6
 #endif
 
-#define NS_TASK_SIZE 256
+#define NS_TASK_SIZE 	256
+#define IFACE_IDX_MAX 	UCHAR_MAX
 
 #endif

@@ -60,7 +60,7 @@ typedef struct sec_policy_s {
 	uint64_t	action; 			///< see ACT_*
 	uint32_t 	act_log_time;		///< logging action time, if action includes ACT_LOG_*
 	range_t		range; 				///< range data
-	int32_t 	nat_policy_id[2]; 	///< 0: Single NAT ID, 1: Both NAT ID
+	uint32_t 	nat_policy_id[2]; 	///< [0]: Single NAT ID, [1]: Both NAT ID.
 
 #if 0
 	timerr_t	*time_info; 		///< Timer rule info

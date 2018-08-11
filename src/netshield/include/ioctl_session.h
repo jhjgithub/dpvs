@@ -19,9 +19,10 @@ typedef struct ioctl_session_s {
 } ioctl_session_t;
 
 typedef struct ioctl_get_sess_s {
-	uint32_t num_sess;
-	ioctl_session_t *sess;
+	uint32_t start_idx;
+	uint32_t num_sess; 	// in: max session, out: stored session
 
+	char data[0];
 } ioctl_get_sess_t;
 
 

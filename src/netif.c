@@ -2146,7 +2146,7 @@ static inline int netif_deliver_mbuf(struct rte_mbuf *mbuf,
 
     pt = pkt_type_get(eth_type, dev);
 
-	RTE_LOG(DEBUG, NETIF, "eth_type=%x, pt=%p \n", rte_be_to_cpu_16(eth_type), pt);
+	//RTE_LOG(DEBUG, NETIF, "eth_type=%x, pt=%p \n", rte_be_to_cpu_16(eth_type), pt);
 
     if (NULL == pt) {
         if (!forward2kni)
@@ -2364,7 +2364,7 @@ static void lcore_job_recv_fwd(void *arg)
             lcore_stats_burst(&lcore_stats[cid], qconf->len);
 
 			if (qconf->len > 0) {
-				RTE_LOG(DEBUG, NETIF, "#### Receive Ether packet: core=%d, pkts=%d \n", cid, qconf->len);
+				//RTE_LOG(DEBUG, NETIF, "#### Receive Ether packet: core=%d, pkts=%d \n", cid, qconf->len);
 				lcore_process_packets(qconf, qconf->mbufs, cid, qconf->len, 0);
 			}
 
@@ -2560,7 +2560,7 @@ static void kni_send2kern_loop(uint8_t port_id, struct netif_queue_conf *qconf)
 
     if (qconf->kni_len > 0) {
         if (kni_dev_exist(dev)) {
-#if 1
+#if 0
 			RTE_LOG(DEBUG, NETIF, "Send packets to KNI1: port%d -> %s, %d pkts \n", 
 					 dev->id, rte_kni_get_name(dev->kni.kni), qconf->kni_len);
 

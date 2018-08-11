@@ -5,31 +5,21 @@
 #include <netinet/tcp.h>
 #include <linux/icmp.h>
 #include <linux/icmpv6.h>
-#include "dpdk.h"
+#include <dpdk.h>
 #include <ipv4.h>
-#include "ns_typedefs.h"
-#include "macros.h"
-#include "netshield.h"
-#include "ns_task.h"
-#include "cmds.h"
-#include "ns_dbg.h"
-#include "dump.h"
-
-#if 0
-#include <include_os.h>
-
-#include <typedefs.h>
+#include <ns_typedefs.h>
+#include <macros.h>
+#include <netshield.h>
 #include <ns_task.h>
-#include <ns_macro.h>
-#include <log.h>
-#include <misc.h>
-#endif
-
-#include <parse_proto.h>
+#include <cmds.h>
+#include <ns_dbg.h>
+#include <dump.h>
+#include <utils.h>
+#include <tcp_opt.h>
 
 //////////////////////////////////////////////////////
 
-DECLARE_DBG_LEVEL(9);
+DECLARE_DBG_LEVEL(2);
 
 uint16_t parse_ip_options(iph_t* iph);
 int32_t parse_tcp_options(ns_task_t* nstask);
@@ -38,36 +28,6 @@ int32_t parse_tcp_options(ns_task_t* nstask);
 /* -------------------------------- */
 /*        Code 영역                 */
 /* -------------------------------- */
-
-uint8_t icmp_type_invmap[] = {
-	[ICMP_ECHO] = ICMP_ECHOREPLY + 1,
-	[ICMP_ECHOREPLY] = ICMP_ECHO + 1,
-	[ICMP_TIMESTAMP] = ICMP_TIMESTAMPREPLY + 1,
-	[ICMP_TIMESTAMPREPLY] = ICMP_TIMESTAMP + 1,
-	[ICMP_INFO_REQUEST] = ICMP_INFO_REPLY + 1,
-	[ICMP_INFO_REPLY] = ICMP_INFO_REQUEST + 1,
-	[ICMP_ADDRESS] = ICMP_ADDRESSREPLY + 1,
-	[ICMP_ADDRESSREPLY] = ICMP_ADDRESS + 1
-};
-
-#define NDISC_NEIGHBOUR_SOLICITATION    135
-#define NDISC_NEIGHBOUR_ADVERTISEMENT   136
-uint8_t icmp6_type_invmap[] = {
-	[ICMPV6_ECHO_REQUEST - 128]	= ICMPV6_ECHO_REPLY + 1,
-	[ICMPV6_ECHO_REPLY - 128]	= ICMPV6_ECHO_REQUEST + 1,
-	[NDISC_NEIGHBOUR_SOLICITATION - 128] = NDISC_NEIGHBOUR_ADVERTISEMENT + 1,
-	[NDISC_NEIGHBOUR_ADVERTISEMENT - 128] = NDISC_NEIGHBOUR_SOLICITATION + 1,
-	[ICMPV6_NI_QUERY - 128]		= ICMPV6_NI_REPLY + 1,
-	[ICMPV6_NI_REPLY - 128]		= ICMPV6_NI_QUERY +1
-};
-
-uint8_t get_inv_icmp_type(uint8_t icmp_type, uint32_t fflag)
-{
-	if (fflag & FUNC_FLAG_IPV6)
-		return (icmp6_type_invmap[icmp_type-128]-1);
-	else
-		return (icmp_type_invmap[icmp_type]-1);
-}
 
 int32_t build_icmp_key(const char *data, skey_t *skey, int32_t *pkt_len, uint32_t *flags)
 {
@@ -99,7 +59,7 @@ int32_t build_icmp_key(const char *data, skey_t *skey, int32_t *pkt_len, uint32_
 	case ICMP_ECHO:
 		// icmp id를 채운다.
 		skey->sp = ntohs(ic->un.echo.id);
-		icmp_type[1] = get_inv_icmp_type(ic->type, 0);
+		icmp_type[1] = ns_get_inv_icmp_type(ic->type, 0);
 		break;
 
 	case 9:
@@ -109,17 +69,17 @@ int32_t build_icmp_key(const char *data, skey_t *skey, int32_t *pkt_len, uint32_
 	case ICMP_TIMESTAMP:
 	case ICMP_TIMESTAMPREPLY:
 		*pkt_len += 12;
-		icmp_type[1] = get_inv_icmp_type(ic->type, 0);
+		icmp_type[1] = ns_get_inv_icmp_type(ic->type, 0);
 		break;
 
 	case ICMP_INFO_REQUEST:
 	case ICMP_INFO_REPLY:
-		icmp_type[1] = get_inv_icmp_type(ic->type, 0);
+		icmp_type[1] = ns_get_inv_icmp_type(ic->type, 0);
 		break;
 
 	case ICMP_ADDRESS:
 	case ICMP_ADDRESSREPLY:
-		icmp_type[1] = get_inv_icmp_type(ic->type, 0);
+		icmp_type[1] = ns_get_inv_icmp_type(ic->type, 0);
 		*pkt_len += 4;
 		break;
 
@@ -263,7 +223,7 @@ int32_t parse_inet_protocol(ns_task_t *nstask)
 
 	// invalid L4 Header length
 	if (nstask->l4_hlen > nstask->ip_dlen) {
-		dbg(5, "invalid IP packet !");
+		dbg(2, "invalid IP packet !");
 
 		return NS_DROP;
 	}
@@ -350,7 +310,7 @@ int32_t init_task_info(ns_task_t *nstask)
 		ret = NS_ACCEPT;
 	}
 
-	DBGKEY(4, SKEY, &nstask->skey);
+	DBGKEY(2, SKEY, &nstask->skey);
 
 	return ret;
 }
@@ -461,7 +421,7 @@ uint16_t parse_ip_options(iph_t* iph)
 		default:
 			optp ++;
 			optsdone++;
-			dbg(0, "unknown option type: %d", *optp);
+			dbg(6, "unknown option type: %d", *optp);
 			break;
 		}
 

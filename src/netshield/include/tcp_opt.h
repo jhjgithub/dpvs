@@ -1,5 +1,5 @@
-#ifndef __PARSE_PROTO__H__
-#define __PARSE_PROTO__H__
+#ifndef __TCP_OPT_H__
+#define __TCP_OPT_H__
 
 //////////////////////////////////////////////////////////
 // TCP options

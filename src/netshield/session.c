@@ -2,22 +2,6 @@
 #include <stdint.h>
 #include <dpdk.h>
 
-#if 0
-#include <include_os.h>
-
-#include <typedefs.h>
-#include <ns_macro.h>
-#include <session.h>
-#include <commands.h>
-#include <log.h>
-#include <ns_malloc.h>
-#include <khypersplit.h>
-#include <pmgr.h>
-#include <ioctl_session.h>
-#include <options.h>
-#include <tcp_state.h>
-#endif
-
 #include <ns_typedefs.h>
 #include <macros.h>
 #include <ns_malloc.h>
@@ -29,15 +13,6 @@
 #include <action.h>
 #include <options.h>
 #include <ns_malloc.h>
-
-#if 0
-#include <include_os.h>
-
-#include <typedefs.h>
-#include <ns_macro.h>
-#include <session.h>
-#include <log.h>
-#endif
 
 
 //////////////////////////////////////////////////////
@@ -242,7 +217,6 @@ int32_t session_remove(void *stab, session_t *si)
 		return -1;
 	}
 
-#if 0
 	if (si->action & ACT_NAT) {
 		si1 = bcht_delete((bcht_t*)stab, si->natinfo.hashkey, (const char*)&si->skey);
 
@@ -253,7 +227,6 @@ int32_t session_remove(void *stab, session_t *si)
 			session_release(si);
 		}
 	}
-#endif
 
 	session_release(si);
 

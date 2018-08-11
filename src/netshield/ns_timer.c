@@ -2,15 +2,6 @@
 #include <stdint.h>
 #include <dpdk.h>
 
-#if 0
-#include <include_os.h>
-
-#include <typedefs.h>
-#include <ns_macro.h>
-#include <timer.h>
-#include <session.h>
-#endif
-
 #include <ns_typedefs.h>
 #include <macros.h>
 #include <ns_timer.h>
@@ -436,8 +427,10 @@ int32_t nstimer_main(void)
 		}
 	} // end of while loop
 
-	dbg(4, "all=%u, del_cnt=%u, count=%u, cur_node_cnt=%u",
-		all, del_cnt, count, atomic_read(&h->count));
+	if (del_cnt > 0) {
+		dbg(4, "all=%u, del_cnt=%u, count=%u, cur_node_cnt=%u",
+			all, del_cnt, count, atomic_read(&h->count));
+	}
 
 	return del_cnt;
 }

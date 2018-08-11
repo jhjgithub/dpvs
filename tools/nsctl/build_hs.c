@@ -31,6 +31,7 @@
 #include <rfg.h>
 
 #include <parse_policy_json.h>
+#include <io.h>
 
 int send_to_daemon(sec_policy_t *fwp, int num, const char *hsfile, nat_policy_t *np, int nnum);
 
@@ -271,7 +272,7 @@ int apply_json_rule(sec_policy_t *secp, int snum, nat_policy_t *np, int nnum)
 	const char *f = "/tmp/hs.bin";
 	save_hypersplit(&hypersplit, f);
 	//load_hypersplit(f);
-	send_to_daemon(secp, snum, f, np, nnum);
+	nsctl_send_to_daemon(secp, snum, f, np, nnum);
 
 	unlink(f);
 	unload_partition(&pa);

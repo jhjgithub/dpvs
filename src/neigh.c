@@ -117,6 +117,9 @@ static int arp_unres_qlen = ARP_ENTRY_BUFF_SIZE_DEF;
 
 static struct rte_ring *neigh_ring[DPVS_MAX_LCORE];
 
+// for NetShield
+ARPHOOK g_ns_arphook=NULL;
+
 static void unres_qlen_handler(vector_t tokens)
 {
     char *str = set_value(tokens);
@@ -528,9 +531,14 @@ int neigh_resolve_input(struct rte_mbuf *m, struct netif_port *port)
     struct route_entry *rt = NULL;
 
     rt = route4_local(arp->arp_data.arp_tip, port);
-    if(!rt){
-       return EDPVS_KNICONTINUE;
-    }
+	if(!rt){
+		if (g_ns_arphook && g_ns_arphook(m, port) == 0) {
+			rte_pktmbuf_free(m);
+			return EDPVS_DROP;
+		}
+
+		return EDPVS_KNICONTINUE;
+	}
     route4_put(rt);
 
     eth = (struct ether_hdr *)rte_pktmbuf_prepend(m,
