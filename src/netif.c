@@ -2597,7 +2597,7 @@ static void kni_send2port_loop(struct netif_port *port)
 
 #if 1
 	if (npkts > 0) {
-	struct ether_hdr *eth;
+		struct ether_hdr *eth;
 		eth = rte_pktmbuf_mtod(kni_pkts_burst[0], struct ether_hdr *);
 
 		// no IPv6

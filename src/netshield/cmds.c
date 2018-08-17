@@ -23,9 +23,7 @@ DECLARE_DBG_LEVEL(2);
 
 extern int32_t parse_inet_protocol(ns_task_t *nstask);
 extern int32_t init_task_info(ns_task_t *nstask);
-#if 0
-extern int32_t frag_main(ns_task_t *nstask);
-#endif
+extern int32_t frag4_main(ns_task_t *nstask);
 
 //////////////////////////////////////////////////////
 
@@ -35,7 +33,6 @@ nscmd_module_t nscmd_module_list[] =
 #if 0
 	//  name            short_name  run                 init                clean           age
 	CMD_ITEM(nsdev,      NSDEV,      NULL,              nsdev_init,         nsdev_clean,    NULL),
-	CMD_ITEM(frag,       FR,         frag_main,          NULL,               NULL,           NULL),
 #endif
 
 	CMD_ITEM(arpp,       ARPP,        NULL,          	arpp_init,           arpp_clean,    NULL),
@@ -47,6 +44,8 @@ nscmd_module_t nscmd_module_list[] =
 	CMD_ITEM(taskinfo,  TI,        	init_task_info,     NULL,               NULL,           NULL),
 	CMD_ITEM(inet,      IN,        	parse_inet_protocol,NULL,             	NULL,           NULL),
 	CMD_ITEM(pmgr, 		PMGR_MAIN, 	pmgr_main,         pmgr_init,           pmgr_clean,     NULL),
+	CMD_ITEM(frag4,     FR4,        frag4_main,        NULL,               NULL,           NULL),
+	CMD_ITEM(log,       LOG,        NULL,              NULL,               NULL,           NULL),
 
 	[NS_CMD_MAX] = {.name=NULL, .short_name= NULL, .run=NULL, .init=NULL, .clean=NULL, .age=NULL}
 
@@ -179,16 +178,20 @@ int32_t nscmd_run_cmds(ns_task_t *nstask)
 		}
 		else if (ret == NS_STOP) {
 			dbg(5, "Stop by : %s", cmd->name);
-			ret = NS_ACCEPT;
+			break;
+		}
+		else if (ret == NS_REPEAT) {
+			dbg(5, "Repeat by : %s", cmd->name);
 			break;
 		}
 		else {
 			dbg(0, "Unknown result : module=%s, ret=%d", cmd->name, ret);
+			break;
 		}
 	}
 
 	// and then, finalize packet
-	if (ret == NS_STOLEN) {
+	if (ret == NS_STOLEN || ret == NS_STOP) {
 		return ret;
 	}
 

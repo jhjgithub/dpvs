@@ -25,7 +25,7 @@ typedef struct nscmd_module_s {
 
 // command 를 추가 할때 추가 해야 함.
 enum nscmd_index{
-	NSCMD_IDX(frag),
+	NSCMD_IDX(frag4),
 	NSCMD_IDX(inet),
 	NSCMD_IDX(taskinfo),
 
@@ -38,6 +38,7 @@ enum nscmd_index{
 	NSCMD_IDX(timer),
 	NSCMD_IDX(nat),
 	NSCMD_IDX(arpp),
+	NSCMD_IDX(log),
 
 	NS_CMD_MAX
 };

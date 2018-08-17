@@ -27,5 +27,6 @@ int32_t ns_is_local_address(ip4_t ip);
 uint8_t ns_get_nic_idx_by_ip(ip4_t ip);
 //netdev_t* ns_get_nic_by_idx(int32_t ifidx);
 int copy_expand(struct ioctl_data_s *iodata, uint8_t *src, int srclen, int extlen);
+char *ns_get_verdict(int32_t verdict);
 
 #endif

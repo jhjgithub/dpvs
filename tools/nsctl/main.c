@@ -36,27 +36,18 @@
 #include <io.h>
 #include <ioctl.h>
 
-#define APPLY_FIREWALL  0x01
-#define APPLY_NAT       0x02
-#define SHOW_SESSION    0x04
-#define SHOW_OPT_TABLE  0x08
-#define OPT_VAL  		0x10
-#define SHOW_NATIP 		0x20
+#define CMD_APPLY_FIREWALL  0x00000001
+#define CMD_APPLY_NAT       0x00000002
+#define CMD_SHOW_SESSION    0x00000004
+#define CMD_SHOW_OPT_TABLE  0x00000008
+#define CMD_OPT_VAL  		0x00000010
+#define CMD_SHOW_NATIP 		0x00000020
+#define CMD_RULE 			0x00000040
 
 struct arg_opts {
 	char	*s_rule_file;
 	char 	*optarg;
 	int		flags;
-};
-
-enum {
-	IOCTL_START = 0,
-	IOCTL_APPLY_FW_POLICY,
-	IOCTL_DUMMY,
-	IOCTL_SESSION_INFO,
-
-
-	IOCTL_MAXNR
 };
 
 #define IP_FMT                  "%3u.%3u.%3u.%3u"
@@ -115,7 +106,7 @@ static void parse_args(struct arg_opts *argopts, int argc, char *argv[])
 		{ "nat",	  no_argument,		 NULL, 'n' },
 		{ "natip",	  no_argument,		 NULL, 'i' },
 		{ "session",  no_argument,		 NULL, 's' },
-		{ "table",     no_argument,		 NULL, 't' },
+		{ "table",    no_argument,		 NULL, 't' },
 		{ "opt",      required_argument, NULL, 'o' },
 		{ "help",	  no_argument,		 NULL, 'h' },
 		{ NULL,		  0,				 NULL, 0   }
@@ -137,31 +128,32 @@ static void parse_args(struct arg_opts *argopts, int argc, char *argv[])
 			}
 
 			argopts->s_rule_file = optarg;
+			argopts->flags |= CMD_RULE;
 			break;
 
 		case 'o':
-			argopts->flags |= OPT_VAL;
+			argopts->flags |= CMD_OPT_VAL;
 			argopts->optarg = optarg;
 			break;
 
 		case 'f':
-			argopts->flags |= APPLY_FIREWALL;
+			argopts->flags |= CMD_APPLY_FIREWALL;
 			break;
 
 		case 'n':
-			argopts->flags |= APPLY_NAT;
+			argopts->flags |= CMD_APPLY_NAT;
 			break;
 
 		case 'i':
-			argopts->flags |= SHOW_NATIP;
+			argopts->flags |= CMD_SHOW_NATIP;
 			break;
 
 		case 's':
-			argopts->flags |= SHOW_SESSION;
+			argopts->flags |= CMD_SHOW_SESSION;
 			break;
 
 		case 't':
-			argopts->flags |= SHOW_OPT_TABLE;
+			argopts->flags |= CMD_SHOW_OPT_TABLE;
 			break;
 
 		case 'h':
@@ -184,28 +176,16 @@ int main(int argc, char *argv[])
 		.flags			= 0,
 	};
 
-	printf("\n=========================\n");
-	printf("Start Processing Packet Classification Rules \n");
+	//printf("\n=========================\n");
+	//printf("Start Processing Packet Classification Rules \n");
 
 	parse_args(&argopts, argc, argv);
 
-	if (argopts.flags & SHOW_SESSION) {
+	if (argopts.flags & CMD_SHOW_SESSION) {
 
 		nsctl_get_session();
-
-#if 0
-		int rc;
-		int val=0;
-		rc = nsctl_get_option_int(OPT_IDX(bl_btime), &val);
-		printf("1. rc=%d, val=%d \n", rc, val);
-
-		rc = nsctl_set_option_int(OPT_IDX(bl_btime), val+100);
-		val = 0;
-		rc = nsctl_get_option_int(OPT_IDX(bl_btime), &val);
-		printf("2. rc=%d, val=%d \n", rc, val);
-#endif
 	}
-	else if (argopts.flags & SHOW_OPT_TABLE) {
+	else if (argopts.flags & CMD_SHOW_OPT_TABLE) {
 		char *buf;
 		int rc;
 		size_t len;
@@ -216,7 +196,7 @@ int main(int argc, char *argv[])
 			free(buf);
 		}
 	}
-	else if (argopts.flags & OPT_VAL) {
+	else if (argopts.flags & CMD_OPT_VAL) {
 		char *p = strchr(argopts.optarg, '=');
 		int rc;
 		int val=0;
@@ -238,7 +218,7 @@ int main(int argc, char *argv[])
 			rc = nsctl_set_option_int_by_name(argopts.optarg, v);
 		}
 	}
-	else if (argopts.flags & SHOW_NATIP) {
+	else if (argopts.flags & CMD_SHOW_NATIP) {
 		char *buf;
 		int rc;
 		size_t len;
@@ -249,25 +229,27 @@ int main(int argc, char *argv[])
 			free(buf);
 		}
 	}
-
-	if (argopts.s_rule_file != NULL) {
+	else if (argopts.flags & CMD_RULE && argopts.s_rule_file != NULL) {
 		policy_json_t p;
 		memset(&p, 0, sizeof(policy_json_t));
 
 		parse_policy_json(&p, argopts.s_rule_file);
 		if (p.sec_policy[0]) {
-			if (argopts.flags & APPLY_FIREWALL) {
+			if (argopts.flags & CMD_APPLY_FIREWALL) {
 				apply_json_rule(p.sec_policy[0], p.num_sec_policy[0], NULL, 0);
 			}
 		}
 
 		if (p.sec_policy[1]) {
-			if (argopts.flags & APPLY_NAT) {
+			if (argopts.flags & CMD_APPLY_NAT) {
 				apply_json_rule(p.sec_policy[1], p.num_sec_policy[1], p.nat_policy, p.num_nat_policy);
 			}
 		}
 
 		free_policy_json(&p);
+	}
+	else {
+		print_help();
 	}
 
 	return 0;

@@ -389,4 +389,21 @@ int copy_expand(ioctl_data_t *iodata, uint8_t *src, int srclen, int extlen)
 	return 0;
 }
 
+char *ns_verdict[] = {
+	"DROP",
+	"ALLOW",
+	"STOLEN",
+	"REPEAT",
+	"STOP",
+	"MAX"
+};
+
+char *ns_get_verdict(int32_t verdict)
+{
+	if (verdict < NS_DROP || NS_MAX < verdict) {
+		return "Unknown";
+	}
+
+	return ns_verdict[verdict];
+}
 

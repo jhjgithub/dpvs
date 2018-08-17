@@ -19,6 +19,7 @@
 #include "cmds.h"
 #include "ioctl.h"
 #include "options.h"
+#include "utils.h"
 
 
 uint32_t netshield_running = 0;
@@ -164,12 +165,11 @@ int netshield_main(ns_task_t *nstask)
 
 END_MAIN:
 
-	dbg(3, "All processing for Security is done: %s(return:%d)",
-		ret == NS_DROP ? "Droped" : "Allowed", ret);
-
+	dbg(3, "All processing for Security is done: %s(%d)",
+		ns_get_verdict(ret), ret);
 	dbg(3, "=====> End NetShield <=====");
 
-	return ret == NS_DROP ? INET_DROP : INET_ACCEPT;
+	return ret;
 }
 
 int netshield_post_main(ns_task_t *nstask)
@@ -186,11 +186,9 @@ int netshield_post_main(ns_task_t *nstask)
 	ret = nscmd_run_cmds(nstask);
 
 END_MAIN:
-
-	dbg(3, "All processing for Security is done: %s(return:%d)",
-		ret == NS_DROP ? "Droped" : "Allowed", ret);
-
+	dbg(3, "All processing for Security is done: %s(%d)",
+		ns_get_verdict(ret), ret);
 	dbg(3, "=====> End NetShield <=====");
 
-	return ret == NS_DROP ? INET_DROP : INET_ACCEPT;
+	return ret;
 }

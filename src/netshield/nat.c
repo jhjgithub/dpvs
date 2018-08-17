@@ -1130,8 +1130,9 @@ int32_t nat_main(ns_task_t* nstask)
 		}
 		else {
 			// call nat_main()
+			// nat_maiin() will be run at the HOOK_POST_ROUTING
 			append_cmd(nstask, nat);
-			ret = NS_STOLEN;
+			ret = NS_STOP;
 		}
 	}
 	else {
