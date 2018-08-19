@@ -136,6 +136,7 @@ static int parse_app_args(int argc, char **argv)
 int main(int argc, char *argv[])
 {
     int err, nports;
+#if 0
     portid_t pid;
     struct netif_port *dev;
     struct timeval tv;
@@ -331,6 +332,10 @@ end:
         RTE_LOG(ERR, DPVS, "Fail to term configuration file: %s\n",
                 dpvs_strerror(err));
     pidfile_rm(DPVS_PIDFILE);
+#endif
+
+int32_t nslog_init(void);
+	nslog_init();
 
     exit(0);
 }

@@ -76,6 +76,7 @@ DEPS    = $(OBJS:%.o=%.d)
 #########################
 
 all: buildrepo $(TARGET)
+	./dpvs
 
 $(TARGET): $(OBJS)
 	$(QUITE)echo "  $(notdir $@)"

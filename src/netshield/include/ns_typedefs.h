@@ -171,6 +171,8 @@ typedef struct hlist_node 	hlist_node_t;
 typedef struct hlist_head 	hlist_head_t;
 typedef struct list_head 	list_head_t;
 
+typedef	struct timeval 		timeval_t;
+
 #define atomic_t                rte_atomic32_t
 #define atomic_read(v)          rte_atomic32_read(v)
 #define atomic_set(v, i)        rte_atomic32_set(v, i)

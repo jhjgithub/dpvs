@@ -96,7 +96,7 @@ typedef struct session_s{
 	uint32_t 	sid;		///< NID(4 bits) + SSEQ(28 bits)
 	uint32_t	flags;		///< session 속성
 	uint64_t	action; 	///< see ACT_*
-	uint32_t	born_time; 	///< 생성 시각
+	time_t		born_time; 	///< 생성 시각
 	uint32_t 	last_logging_time;	///< 마지막 세션로그 저장 시간.
 
 	atomic_t	refcnt;		///< 세션 참조 카운트

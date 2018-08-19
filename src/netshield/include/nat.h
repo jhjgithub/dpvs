@@ -63,7 +63,7 @@ typedef struct nat_policy_s {
 	uint32_t	id;			///< nat rule id, this is not unique number
 	uint32_t	flags;		///< nat flags
 
-	uint8_t 	iface_idx;	///< NIC Index (IFACE_IDX_MAX: any, 0 ~)
+	nic_id_t 	iface_idx;	///< NIC Index (IFACE_IDX_MAX: any, 0 ~)
 	ip_t		nip[2];		///< nat ip range 	(0: start, 1: end), host order, MASK_IP_ONLY, RDIR 인 경우 mask값
 	uint16_t	nport[2];	///< nat port range	(0: start, 1: end)
 

@@ -23,7 +23,6 @@ extern struct timezone sys_tz;
 //////////////////////////////////////////////////////
 
 desc_proto_t* ns_get_protocol_desc(uint8_t p);
-char* ns_get_nic_name_by_idx(int32_t ifidx, char* buf);
 uint32_t inet_addr_get_port_ip(int af, uint16_t port_id);
 
 
@@ -56,6 +55,7 @@ uint8_t icmp6_type_invmap[] = {
 
 
 desc_proto_t desc_p [] = {
+//    NO      name           desc
 //{	  0,     "HOPOPT",		"IPv6 Hop-by-Hop Option "},
 {	  0,     "IP",			"Internet Protocol"},
 {     1,     "ICMP",		"Internet Control Message"},
@@ -358,6 +358,19 @@ uint8_t ns_get_nic_idx_by_ip(ip4_t ip)
 	}
 
 	return IFACE_IDX_MAX;
+}
+
+int32_t ns_get_nic_name_by_idx(nic_id_t idx, char *buf, int len)
+{
+	struct netif_port *dev;
+
+ 	dev = netif_port_get((portid_t)idx);
+	if (dev) {
+		strncpy(buf, dev->name, len);
+		return 0;
+	}
+
+	return -1;
 }
 
 int copy_expand(ioctl_data_t *iodata, uint8_t *src, int srclen, int extlen)
