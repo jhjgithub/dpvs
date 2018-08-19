@@ -21,3 +21,28 @@ $ git merge upstream/master
 5. $ git push origin master
 
 
+###########################
+
+1. upstream 확인
+git remote -v
+
+origin  https://github.com/jhjgithub/dpvs.git (fetch)
+origin  https://github.com/jhjgithub/dpvs.git (push)
+
+
+2. upstream 추가
+git remote add upstream https://github.com/iqiyi/dpvs.git
+
+git remote -v     
+origin  https://github.com/jhjgithub/dpvs.git (fetch)
+origin  https://github.com/jhjgithub/dpvs.git (push)
+upstream        https://github.com/iqiyi/dpvs.git (fetch)
+upstream        https://github.com/iqiyi/dpvs.git (push)
+
+3. 머지
+git fetch upstream
+git checkout master 
+git merge upstream/master
+git push origin master 
+ 
+
