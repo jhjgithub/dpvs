@@ -66,6 +66,7 @@ else
 endif
 
 LIBS += -lpthread -lnuma
+#LIBS += -init -fini
 CFLAGS += $(INCDIRS)
 
 SRCS    = $(shell find $(SRCDIR) -name '*.c' | sort)
@@ -76,7 +77,6 @@ DEPS    = $(OBJS:%.o=%.d)
 #########################
 
 all: buildrepo $(TARGET)
-	./dpvs
 
 $(TARGET): $(OBJS)
 	$(QUITE)echo "  $(notdir $@)"
