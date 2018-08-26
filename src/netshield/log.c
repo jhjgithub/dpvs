@@ -74,32 +74,7 @@ int32_t nslog_set_handler(uint32_t logfmt, nslog_output_handler_t *handler)
 	return 0;
 }
 
-
 ///////////////////////////////////////
-
-int32_t nslog_print(int32_t id, int32_t lev, const char* fmt, ...)
-{
-	//int len;
-	//char *p = NULL;
-	char buf[1024];
-	va_list ap;
-
-	/* Determine required size */
-
-	va_start(ap, fmt);
-	vsnprintf(buf, 1024, fmt, ap);
-	va_end(ap);
-
-	printf("%s", buf);
-
-	return 0;
-}
-
-void nslog_syslog(int loglevel, char *msg)
-{
-	syslog(LOG_INFO|LOG_DAEMON, "%s", msg);
-}
-
 
 int32_t nslog_put_char(nslog_buf_t *outbuf, char c)
 {
@@ -198,7 +173,6 @@ char *nslog_get_action_name(uint64_t act)
 	return a;
 }
 
-
 int32_t nslog_output_ipv4(nslog_buf_t *outbuf, ip_t ip)
 {
 	int len = snprintf(outbuf->buf, outbuf->len, "%pI4", (uint32_t*)&ip);
@@ -212,9 +186,9 @@ int32_t nslog_output_ipv4(nslog_buf_t *outbuf, ip_t ip)
 
 /////////////////////////////
 
-int32_t nslog_output_hdr(nslog_buf_t *outbuf, nslog_output_handler_t *handler, session_t *sess)
+int32_t nslog_output_hdr(nslog_buf_t *outbuf, nslog_output_handler_t *handler, session_t *ses)
 {
-	if (handler == NULL || sess == NULL) {
+	if (handler == NULL || ses == NULL) {
 		return -1;
 	}
 
@@ -224,7 +198,7 @@ int32_t nslog_output_hdr(nslog_buf_t *outbuf, nslog_output_handler_t *handler, s
 	//gettimeofday(&loghdr.tv, NULL);
 	loghdr.tv = time(NULL);
 	loghdr.level = 0;
-	loghdr.logid = sess->mp_fw.policy ? sess->mp_fw.policy->logid:0;
+	loghdr.logid = ses->mp_fw.policy ? ses->mp_fw.policy->logid:0;
 
 	// call txtout_hdr(), jsonout_hdr()
 	nslog_modinfo_t *mod = &handler->modinfo[NSLOG_MOD_HDR];
@@ -236,37 +210,35 @@ int32_t nslog_output_hdr(nslog_buf_t *outbuf, nslog_output_handler_t *handler, s
 	return outbuf->len;
 }
 
-int32_t nslog_output_packet(nslog_buf_t *outbuf, nslog_output_handler_t *handler, session_t *sess)
+int32_t nslog_output_packet(nslog_buf_t *outbuf, nslog_output_handler_t *handler, session_t *ses)
 {
-	if (handler == NULL || sess == NULL) {
+	if (handler == NULL || ses == NULL) {
 		return -1;
 	}
 
 	nslog_pkt_t logpkt;
 	skey_t *key;
 
-	key = &sess->skey;
+	key = &ses->skey;
 	memset(&logpkt, 0, sizeof(logpkt));
 
-	if (1|| key->inic == IFACE_IDX_MAX) {
-		//logpkt.innic[0] = 0;
+	if (key->inic == IFACE_IDX_MAX) {
 		strcpy(logpkt.innic, "none");
 	}
 	else {
 		ns_get_nic_name_by_idx(key->inic, logpkt.innic, NSLOG_NIC_NAME_LEN);
 	}
 
-	if (1|| key->onic == IFACE_IDX_MAX) {
-		//logpkt.outnic[0] = 0;
+	if (key->onic == IFACE_IDX_MAX) {
 		strcpy(logpkt.outnic, "none");
 	}
 	else {
 		ns_get_nic_name_by_idx(key->onic, logpkt.outnic, NSLOG_NIC_NAME_LEN);
 	}
 
-	logpkt.act = sess->action;
-	strcpy(logpkt.inzone, "nozone");
-	strcpy(logpkt.outzone, "nozone");
+	logpkt.act = ses->action;
+	strcpy(logpkt.inzone, "none");
+	strcpy(logpkt.outzone, "none");
 	logpkt.src = key->src;
 	logpkt.dst = key->dst;
 	logpkt.sport = key->sp;
@@ -288,15 +260,17 @@ static void timeval_diff(timeval_t *result, timeval_t *start , timeval_t *stop)
 	if ((stop->tv_usec - start->tv_usec) < 0) {
 		result->tv_sec = stop->tv_sec - start->tv_sec - 1;
 		result->tv_usec = stop->tv_usec - start->tv_usec + 1000000;
-	} else {
+	} 
+	else {
 		result->tv_sec = stop->tv_sec - start->tv_sec;
 		result->tv_usec = stop->tv_usec - start->tv_usec;
 	}
 }
 
-int32_t nslog_output_session(nslog_buf_t *outbuf, nslog_output_handler_t *handler, session_t *sess, uint32_t logstate)
+int32_t nslog_output_session(nslog_buf_t *outbuf, nslog_output_handler_t *handler, 
+							 session_t *ses, uint32_t logstate)
 {
-	if (handler == NULL || sess == NULL) {
+	if (handler == NULL || ses == NULL) {
 		return -1;
 	}
 
@@ -304,28 +278,25 @@ int32_t nslog_output_session(nslog_buf_t *outbuf, nslog_output_handler_t *handle
 
 	memset(&logses, 0, sizeof(logses));
 
-	logses.sid = sess->sid;
+	logses.sid = ses->sid;
 	// XXX: test
 	logses.sid = LLONG_MAX;
 	logses.state = logstate;
 	
-	logses.opentime = sess->born_time;
+	logses.opentime = ses->born_time + GET_OPT_VALUE(start_time) - BASE_START_TIME;
 	//gettimeofday(&logses.opentime, NULL);
 	//logses.opentime.tv_sec --;
-	//gettimeofday(&logses.closetime, NULL);
-	logses.closetime = time(NULL);
+
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	logses.closetime = tv.tv_sec;
 
 	//timeval_diff(&logses.duration, &logses.opentime, &logses.closetime);
 	logses.duration = logses.closetime - logses.opentime;
 
-	logses.fwruleid = sess->mp_fw.policy ? sess->mp_fw.policy->rule_id:0;
+	logses.fwruleid = ses->mp_fw.policy ? ses->mp_fw.policy->rule_id:0;
 	
-	// FIXME:
-	logses.traffic[0].packets = 100;
-	logses.traffic[0].bytes = LLONG_MAX;
-
-	logses.traffic[1].packets = 200;
-	logses.traffic[1].bytes = LLONG_MAX-9999;
+	memcpy(&logses.pktcnt, ses->pktcnt, sizeof(pkt_cnt_t) * 3);
 
 	// call txtout_session()
 	nslog_modinfo_t *mod = &handler->modinfo[NSLOG_MOD_SESSION];
@@ -337,9 +308,9 @@ int32_t nslog_output_session(nslog_buf_t *outbuf, nslog_output_handler_t *handle
 	return outbuf->len;
 }
 
-int32_t nslog_output_nat(nslog_buf_t *outbuf, nslog_output_handler_t *handler, session_t *sess, uint64_t nattype)
+int32_t nslog_output_nat(nslog_buf_t *outbuf, nslog_output_handler_t *handler, session_t *ses, uint64_t nattype)
 {
-	if (handler == NULL || sess == NULL) {
+	if (handler == NULL || ses == NULL) {
 		return -1;
 	}
 
@@ -352,9 +323,9 @@ int32_t nslog_output_nat(nslog_buf_t *outbuf, nslog_output_handler_t *handler, s
 	memset(&lognat, 0, sizeof(lognat));
 
 	lognat.nattype = nattype;
-	memcpy(&lognat.ip, &sess->natinfo.ip[0], sizeof(ip_t) * 2);
-	memcpy(&lognat.port, &sess->natinfo.port[0], sizeof(uint16_t) * 2);
-	lognat.natruleid = sess->mp_nat.policy ? sess->mp_nat.policy->rule_id:0;
+	memcpy(&lognat.ip, &ses->natinfo.ip[0], sizeof(ip_t) * 2);
+	memcpy(&lognat.port, &ses->natinfo.port[0], sizeof(uint16_t) * 2);
+	lognat.natruleid = ses->mp_nat.policy ? ses->mp_nat.policy->rule_id:0;
 
 	// call txtout_nat()
 	mod->output(outbuf, mod, &lognat);
@@ -364,8 +335,23 @@ int32_t nslog_output_nat(nslog_buf_t *outbuf, nslog_output_handler_t *handler, s
 
 /////////////////////////////////////////////////
 
+int32_t nslog_syslog(uint32_t level, const char *fmt, ...)
+{
+	char buf[1024];
+	va_list ap;
 
-int32_t nslog_session(session_t *sess, uint32_t logstate)
+	va_start(ap, fmt);
+	vsnprintf(buf, 1024, fmt, ap);
+	va_end(ap);
+
+	// dbg
+	//printf("%s", buf);
+	syslog(level|NSLOG_TYPE_OTHERS, "%s", buf);
+
+	return 0;
+}
+
+int32_t nslog_session(session_t *ses, uint32_t logstate)
 {
 	nslog_buf_t outbuf;
 	char buf[1024];
@@ -385,26 +371,24 @@ int32_t nslog_session(session_t *sess, uint32_t logstate)
 		goto ERR;
 	}
 
-	rc = nslog_output_hdr(&outbuf, h, sess);
+	rc = nslog_output_hdr(&outbuf, h, ses);
 	if (rc < 1) {
 		goto ERR;
 	}
 
-	rc = nslog_output_packet(&outbuf, h, sess);
+	rc = nslog_output_packet(&outbuf, h, ses);
 	if (rc < 1) {
 		goto ERR;
 	}
 
-	rc = nslog_output_session(&outbuf, h, sess, logstate);
+	rc = nslog_output_session(&outbuf, h, ses, logstate);
 	if (rc < 1) {
 		goto ERR;
 	}
 
-	sess->action = ACT_SNAT;
-
-	uint64_t nattype = sess->action & ACT_NAT;
+	uint64_t nattype = ses->action & ACT_NAT;
 	if (nattype) {
-		rc = nslog_output_nat(&outbuf, h, sess, nattype);
+		rc = nslog_output_nat(&outbuf, h, ses, nattype);
 		if (rc < 1) {
 			goto ERR;
 		}
@@ -414,16 +398,13 @@ int32_t nslog_session(session_t *sess, uint32_t logstate)
 		goto ERR;
 	}
 
-	nslog_syslog(LOG_SYSLOG, buf);
+	syslog(LOG_INFO|NSLOG_TYPE_SESSION, "%s", buf);
 
 	return 0;
 ERR:
 
-	printf("error : %d \n", rc);
-
 	return -1;
 }
-
 
 int32_t nslog_init(void)
 {
@@ -431,13 +412,6 @@ int32_t nslog_init(void)
 
 	nslog_txtout_init();
 	nslog_jsonout_init();
-
-
-	session_t sess;
-
-	memset(&sess, 0, sizeof(sess));
-
-	nslog_session(&sess, NSLOG_STAT_OPEN);
 
 	return 0;
 }
@@ -449,89 +423,15 @@ void nslog_clean(void)
 
 }
 
+///////////////////////////////////
 
-#if 0
-Modularized Logging Format
-2081/8/13
+static nscmd_module_t mod_log = {
+	CMD_ITEM(log, LOG, NULL, nslog_init, nslog_clean, NULL)
+};
 
-참고:
-https://ossec-docs.readthedocs.io/en/latest/log_samples/
-
-1. 특징
-
--. human readable
--. structed
--. key value style
--. flexiable
--. 버젼 변경에 따른 형식 제공
-
-2. 기능
--. 모든 버전에 대한 출력 schema를 조회 가능
--. 출력 형태 지정
---. text1
---. key:value 형식
---. 구분자: ","
---. 구분자 이스케이프 처리
---. text2
---. value 형식
---. 구분자: ","
---. 구분자 이스케이프 처리
-
---. json 형식
+static void __attribute__ ((constructor)) nslog_register(void)
+{
+	nscmd_register(NSCMD_IDX(log), &mod_log);
+}
 
 
-log = header | module+
-
-	jsonout_put_mod_start(outbuf, modinfo->name);
-
-	rc = jsonout_common(outbuf, modinfo);
-	if (rc < 1) {
-		return 0;
-	}
-header:
--. time
--. ver
--. level
--. logid
-
-firewall module: fw
--. name
--. fldcount
--. version
--. action
--. innic
--. outnic
--. src ip:port
--. dst ip:port
--. proto
--. fwrule id
--. packets
--. bytes
--. duration
--. srczone
--. dstzone
--. severity
-
-
-nat module: nat
--. name
--. fldcount
--. version
--. nated ip/port
-
-3. logging
--. 로그 오브젝트를 struct로 정의 한다.
--. log output 모듈에서 type에 따라 output을 변환 한다: text, json, xml, html
-
-
-4. juniper log format
-time, filter, action, nic_name, protocol, pkt_len, src, dst
-
-Time      Filter    Action Interface     Protocol  Src Addr      Dest Addr       
-13:10:12  pfe       D      rlsq0.902     ICMP      192.0.2.2   192.0.2.1                   
-13:10:11  pfe       D      rlsq0.902     ICMP      192.0.2.2   192.0.2.1 
-Time of Log: 2004-10-13 10:37:17 PDT, Filter: f, Filter action: accept, Name of interface: fxp0.0Name of protocol: TCP,Packet Length: 50824, Source address: 203.0.113.108:829, Destination address: 192.168.70.66:513
-
-
-
-#endif

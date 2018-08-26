@@ -172,7 +172,7 @@ static int32_t txtout_common(nslog_buf_t *outbuf, nslog_modinfo_t *modinfo)
 	return outbuf->len;
 #else
 	txtout_put_field(outbuf, FN_MODULE, "%s", modinfo->name);
-	txtout_put_field(outbuf, FN_LOGID, "%d", modinfo->fldcount);
+	txtout_put_field(outbuf, FN_FLDCNT, "%d", modinfo->fldcount);
 	txtout_put_field(outbuf, FN_VER, "%d", modinfo->ver);
 
 	return outbuf->len;
@@ -278,10 +278,10 @@ static int32_t txtout_session(nslog_buf_t *outbuf, nslog_modinfo_t *modinfo, voi
 	txtout_put_field(outbuf, FN_DUR, "%s", tbuf);
 
 	txtout_put_field(outbuf, FN_FWRID, "%u", logses->fwruleid);
-	txtout_put_field(outbuf, FN_PKT_CS, "%llu", logses->traffic[NSLOG_DIR_CS].packets);
-	txtout_put_field(outbuf, FN_BYT_CS, "%llu", logses->traffic[NSLOG_DIR_CS].bytes);
-	txtout_put_field(outbuf, FN_PKT_SC , "%llu", logses->traffic[NSLOG_DIR_SC].packets);
-	txtout_put_field(outbuf, FN_BYT_SC, "%llu", logses->traffic[NSLOG_DIR_SC].bytes);
+	txtout_put_field(outbuf, FN_PKT_CS, "%llu", logses->pktcnt[0].packets);
+	txtout_put_field(outbuf, FN_BYT_CS, "%llu", logses->pktcnt[0].bytes);
+	txtout_put_field(outbuf, FN_PKT_SC , "%llu", logses->pktcnt[1].packets);
+	txtout_put_field(outbuf, FN_BYT_SC, "%llu", logses->pktcnt[1].bytes);
 
 	return outbuf->len;
 }

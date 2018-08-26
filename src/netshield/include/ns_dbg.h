@@ -1,19 +1,29 @@
 #ifndef __DBG_H_
 #define __DBG_H_
 
+ #include <syslog.h>
 #include <rte_log.h>
 
 // short file name
 #define __FILENAME__ \
 	 (strrchr(__FILE__,'/') ? strrchr(__FILE__,'/')+1 : __FILE__ )
 
+extern int32_t nslog_syslog(uint32_t level, const char *fmt, ...);
+
 #if defined(DEBUG) && defined(CONFIG_DPVS_ENABLE_LOCAL_DEBUG)
 #undef RTE_LOG
 
+#if 0
 // redefine RTE_LOG()
 #define RTE_LOG(l, t, fmt, ...) \
 	rte_log(RTE_LOG_ ## l,  RTE_LOGTYPE_ ## t,\
 	# t ": %s(%d): " fmt, __FILENAME__, __LINE__, ## __VA_ARGS__)
+#else
+#define RTE_LOG(l, t, fmt, ...) \
+	nslog_syslog(RTE_LOG_ ## l - 1,  \
+	"%s(%d): " fmt, __FILENAME__, __LINE__, ## __VA_ARGS__)
+
+#endif
 
 #endif
 
@@ -53,11 +63,19 @@ extern void _dump_hex(const uint8_t *data, int len);
 struct ipv4_hdr;
 extern void dump_pkt(char* func, int32_t line, struct ipv4_hdr *iph, uint8_t inic);
 
+#if 0
 #define ns_err(fmt, args...) 	rte_log(RTE_LOG_ERR, RTE_LOGTYPE_USER1, "NetShield ERR: " NS_FUNC_FMT fmt "\n", NS_FUNC_PARAM, ##args)
 #define ns_warn(fmt, args...) 	rte_log(RTE_LOG_WARNING, RTE_LOGTYPE_USER1, "NetShield WARN: " NS_FUNC_FMT fmt "\n", NS_FUNC_PARAM, ##args)
 #define ns_log(fmt, args...)	rte_log(RTE_LOG_INFO, RTE_LOGTYPE_USER1, "NetShield INFO: " NS_FUNC_FMT fmt "\n", NS_FUNC_PARAM, ##args)
 
 #define OUT_MSG(fmt, args...) 	rte_log(RTE_LOG_DEBUG, RTE_LOGTYPE_USER1, "NetShield: " NS_FUNC_FMT fmt "\n", NS_FUNC_PARAM, ##args)
+#else
+#define ns_err(fmt, args...) 	nslog_syslog(LOG_ERR, "ERR: " NS_FUNC_FMT fmt "\n", NS_FUNC_PARAM, ##args)
+#define ns_warn(fmt, args...) 	nslog_syslog(LOG_WARNING, "WARN: " NS_FUNC_FMT fmt "\n", NS_FUNC_PARAM, ##args)
+#define ns_log(fmt, args...)	nslog_syslog(LOG_INFO, "INFO: " NS_FUNC_FMT fmt "\n", NS_FUNC_PARAM, ##args)
+
+#define OUT_MSG(fmt, args...) 	nslog_syslog(LOG_DEBUG, "DBG: " NS_FUNC_FMT fmt "\n", NS_FUNC_PARAM, ##args)
+#endif
 
 #define DBG_NAME(n)				dbg_level_ ## n
 #define CMP_LEV(file_l, func_l) dbgctl_compare_level(file_l, (char*)__FUNCTION__, func_l)
@@ -131,6 +149,7 @@ extern void dump_pkt(char* func, int32_t line, struct ipv4_hdr *iph, uint8_t ini
 
 #else
 
+#if 0
 #define DECLARE_DBG_LEVEL(x)
 #define OUT_MSG(fmt, args... )
 #define DBG(l,fmt, args...)
@@ -150,6 +169,7 @@ extern void dump_pkt(char* func, int32_t line, struct ipv4_hdr *iph, uint8_t ini
 #define ns_warn(fmt, args...) 	ns_log_print(-1, LOG_LEV_WARN, "NetShield WARN: " fmt , ##args)
 #define ns_log(fmt, args...)	ns_log_print(-1, LOG_LEV_INFO, "NetShield INFO: " fmt , ##args)
 #define dbg_dump_hex(data, len) do { } while (0)
+#endif
 
 #endif // CONFIG_NS_DEBUG
 

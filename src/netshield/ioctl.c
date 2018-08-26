@@ -131,7 +131,7 @@ int ns_set_opt_value(ioctl_data_t *iodata)
 
 	dbg(6, "optidx=%u", optidx);
 
-	if (OPT_MIN >= optidx || optidx >= OPT_MAX) {
+	if (optidx >= OPT_MAX) {
 		return -1;
 	}
 

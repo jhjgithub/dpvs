@@ -7,6 +7,7 @@
 #include <ns_task.h>
 #include <ns_dbg.h>
 #include <session.h>
+#include <cmds.h>
 
 #if 0
 #include <net/protocol.h>
@@ -17,7 +18,7 @@
 #endif
 
 //#include <commands.h>
-//#include <log.h>
+//#include <frag.h>
 //#include <extern.h>
 //#include <version.h>
 //#include <misc.h>
@@ -63,4 +64,14 @@ int32_t frag4_main(ns_task_t *nstask)
     default: /* error happened */
 		return NS_STOLEN;
     }
+}
+
+///////////////////////////////////
+static nscmd_module_t mod_frag = {
+	CMD_ITEM(frag4, FRAG4, frag4_main, NULL, NULL, NULL)
+};
+
+static void __attribute__ ((constructor)) frag4_register(void)
+{
+	nscmd_register(NSCMD_IDX(frag4), &mod_frag);
 }

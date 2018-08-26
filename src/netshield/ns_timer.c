@@ -8,6 +8,7 @@
 #include <session.h>
 #include <hashed_llist.h>
 #include <smgr.h>
+#include <cmds.h>
 
 #define MAX_AGING			3607
 //#define MAX_AGING			61  	// for testing and debugging
@@ -484,5 +485,15 @@ int32_t nstimer_init(void)
 void nstimer_clean(void)
 {
 
+}
+
+///////////////////////
+static nscmd_module_t mod_timer = {
+	CMD_ITEM(timer, TIMER, NULL, nstimer_init, nstimer_clean, nstimer_ageing)
+};
+
+static void __attribute__ ((constructor)) nstimer_register(void)
+{
+	nscmd_register(NSCMD_IDX(timer), &mod_timer);
 }
 

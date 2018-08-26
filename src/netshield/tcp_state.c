@@ -16,18 +16,18 @@
 
 atomic_t g_tcp_asbuf_cnt;
 
-static const u_long *tcps_timeout[TCPS_MAX] = { 
-	&GET_OPT_VALUE(timeout_close), 		// listen , 10 sec
-	&GET_OPT_VALUE(timeout_syn_sent),		// syn sent , 120 sec
-	&GET_OPT_VALUE(timeout_syn_rcv),		// syn received , 60 sec
-	NULL,							// established , 3600 sec
-	&GET_OPT_VALUE(timeout_close_wait), 	// close wait , 60 sec
-	&GET_OPT_VALUE(timeout_fin_wait),	  	// fin wait_1 , 120 sec
-	&GET_OPT_VALUE(timeout_close_wait), 	// closing 	, 60 sec
-	&GET_OPT_VALUE(timeout_last_ack), 	// last ack , 30 sec
-	&GET_OPT_VALUE(timeout_last_ack),	  	// fin wait_2 , 30 sec
-	&GET_OPT_VALUE(timeout_time_wait), 	// time wait , 10 sec
-	&GET_OPT_VALUE(timeout_close), 		// closed , 10 sec
+static const uint32_t tcps_timeout[TCPS_MAX] = { 
+	OPT_IDX(timeout_close), 		// listen , 10 sec
+	OPT_IDX(timeout_syn_sent),		// syn sent , 120 sec
+	OPT_IDX(timeout_syn_rcv),		// syn received , 60 sec
+	UINT_MAX,						// established , 3600 sec
+	OPT_IDX(timeout_close_wait), 	// close wait , 60 sec
+	OPT_IDX(timeout_fin_wait),	  	// fin wait_1 , 120 sec
+	OPT_IDX(timeout_close_wait), 	// closing 	, 60 sec
+	OPT_IDX(timeout_last_ack), 	// last ack , 30 sec
+	OPT_IDX(timeout_last_ack),	  	// fin wait_2 , 30 sec
+	OPT_IDX(timeout_time_wait), 	// time wait , 10 sec
+	OPT_IDX(timeout_close), 		// closed , 10 sec
 };
 
 static const char *tcps_name[TCPS_MAX] = { 
@@ -94,10 +94,10 @@ void dump_tcp_state(tcph_t *th, tcpst_t *tcpst, int32_t dir, uint16_t nstate, ui
 
 uint32_t tcp_track_states(ns_task_t *nstask, uint32_t *timeout)
 {
-	int32_t dir = ISRES(nstask);
+	int32_t dir = IS_DIR_SC(nstask);
 	struct tcphdr *th;
-	session_t* si = nstask->si;
-	tcpst_t *tcpst = &si->tcpst;
+	session_t* ses = nstask->ses;
+	tcpst_t *tcpst = &ses->tcpst;
 	uint16_t ostate, nstate;
 	uint32_t dlen;
 	uint32_t changed=0;
@@ -216,7 +216,7 @@ uint32_t tcp_track_states(ns_task_t *nstask, uint32_t *timeout)
 			 * this gives us a half-closed connection;
 			 * ESTABLISHED -> FIN_WAIT_1
 			 */
-			if (0 /*GET_OPT_VALUE(dsync)*/) {
+			if (0 /*OPT_IDX(dsync)*/) {
 				// 세션 동기화인 경우 마지막 단계로 진입
 				nstate = TCPS_TIME_WAIT;
 			}
@@ -233,7 +233,7 @@ uint32_t tcp_track_states(ns_task_t *nstask, uint32_t *timeout)
 			/*
 			 * an ACK, should we exclude other flags here?
 			 */
-			if (/*GET_OPT_VALUE(dsync) &&*/ ostate == TCPS_TIME_WAIT) {
+			if (/*OPT_IDX(dsync) &&*/ ostate == TCPS_TIME_WAIT) {
 				nstate = TCPS_TIME_WAIT;
 			}
 			else if (ostate == TCPS_FIN_WAIT_1) {
@@ -370,11 +370,11 @@ END:
 		tcpst->tseq[!dir].state = TCPS_ESTABLISHED;
 	}
 
-	if (tcps_timeout[nstate] == NULL) {
-		*timeout = si->timeout;
+	if (tcps_timeout[nstate] == UINT_MAX) {
+		*timeout = ses->timeout;
 	}
 	else {
-		*timeout = *tcps_timeout[nstate];
+		*timeout = opt_get_val(tcps_timeout[nstate]);
 	}
 
 	//dump_tcp_state(th, tcpst, dir, nstate, changed);
@@ -390,7 +390,7 @@ uint32_t tcp_init_seq(ns_task_t *nstask)
 	ENT_FUNC(3);
 
 	th = ns_get_transport_hdr(nstask);
-	tcpst = &nstask->si->tcpst;
+	tcpst = &nstask->ses->tcpst;
 
 	if (th == NULL) {
 		dbg(0, "th is null !");
@@ -437,10 +437,10 @@ uint32_t tcp_init_seq(ns_task_t *nstask)
 
 uint32_t tcp_track_seq(ns_task_t *nstask)
 {
-	int32_t dir = ISRES(nstask);
+	int32_t dir = IS_DIR_SC(nstask);
 	struct tcphdr *th;
-	session_t* si = nstask->si;
-	tcpst_t *tcpst = &si->tcpst;
+	session_t* ses = nstask->ses;
+	tcpst_t *tcpst = &ses->tcpst;
 	tseq_t *ts_req, *ts_res;
 	uint32_t seq, seq_min, ack, end;
 	uint16_t win;

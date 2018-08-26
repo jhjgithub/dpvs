@@ -242,10 +242,10 @@ static int32_t jsonout_session(nslog_buf_t *outbuf, nslog_modinfo_t *modinfo, vo
 	jsonout_put_field(outbuf, FN_DUR, "\"%s\"", tbuf);
 
 	jsonout_put_field(outbuf, FN_FWRID, "%u", logses->fwruleid);
-	jsonout_put_field(outbuf, FN_PKT_CS, "%llu", logses->traffic[NSLOG_DIR_CS].packets);
-	jsonout_put_field(outbuf, FN_BYT_CS, "%llu", logses->traffic[NSLOG_DIR_CS].bytes);
-	jsonout_put_field(outbuf, FN_PKT_SC, "%llu", logses->traffic[NSLOG_DIR_SC].packets);
-	jsonout_put_last_field(outbuf, FN_BYT_SC, "%llu", logses->traffic[NSLOG_DIR_SC].bytes);
+	jsonout_put_field(outbuf, FN_PKT_CS, "%llu", logses->pktcnt[0].packets);
+	jsonout_put_field(outbuf, FN_BYT_CS, "%llu", logses->pktcnt[0].bytes);
+	jsonout_put_field(outbuf, FN_PKT_SC, "%llu", logses->pktcnt[1].packets);
+	jsonout_put_last_field(outbuf, FN_BYT_SC, "%llu", logses->pktcnt[1].bytes);
 
 	return outbuf->len;
 }

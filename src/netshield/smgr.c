@@ -16,6 +16,7 @@
 #include <ioctl_session.h>
 #include <tcp_state.h>
 #include <ioctl.h>
+#include <log.h>
 
 
 //////////////////////////////////////////////////////
@@ -45,7 +46,7 @@ uint32_t smgr_get_session_count(void)
 	return atomic_read(&g_smgr->all);
 }
 
-void smgr_remove_alist(smgr_t *smgr, session_t *si)
+void smgr_remove_alist(smgr_t *smgr, session_t *ses)
 {
 	if (smgr == NULL) {
 		return;
@@ -55,20 +56,20 @@ void smgr_remove_alist(smgr_t *smgr, session_t *si)
 	atomic_dec(&smgr->mine);
 
 	ns_rw_lock_irq(&smgr->smgr_lock) {
-		list_del(&si->alist);
-		session_release(si);
+		list_del(&ses->alist);
+		session_release(ses);
 
 #if 0
-		if (!list_empty(&si->rlist)) {
-			list_del(&si->rlist);
-			session_release(si);
+		if (!list_empty(&ses->rlist)) {
+			list_del(&ses->rlist);
+			session_release(ses);
 		}
 #endif
 
 	} ns_rw_unlock_irq(&smgr->smgr_lock);
 }
 
-void smgr_add_alist(smgr_t *smgr, session_t* si)
+void smgr_add_alist(smgr_t *smgr, session_t* ses)
 {
 	if (smgr == NULL) {
 		return;
@@ -78,80 +79,78 @@ void smgr_add_alist(smgr_t *smgr, session_t* si)
 	atomic_inc(&smgr->mine);
 
 	ns_rw_lock_irq(&smgr->smgr_lock) {
-		list_add_tail(&si->alist, &g_smgr->all_slist);
-		session_hold(si);
+		list_add_tail(&ses->alist, &g_smgr->all_slist);
+		session_hold(ses);
 
 	} ns_rw_unlock_irq(&smgr->smgr_lock);
 }
 
-int32_t smgr_add_session(smgr_t *smgr, session_t *si)
+int32_t smgr_add_session(smgr_t *smgr, session_t *ses)
 {
 	ENT_FUNC(3);
 
-	smgr_add_alist(smgr, si);
+	smgr_add_alist(smgr, ses);
 
-	session_insert(smgr->stab, si);
-	nstimer_insert(&si->timer, 10);
+	session_insert(smgr->stab, ses);
+	nstimer_insert(&ses->timer, 10);
 
-	dbg(5, "Add a new session: si=%p, refcnt=%d", si, atomic_read(&si->refcnt));
+	dbg(5, "Add a new session: ses=%p, refcnt=%d", ses, atomic_read(&ses->refcnt));
 
 	return 0;
 }
 
-int32_t smgr_delete_session(session_t *si, uint32_t flags)
+int32_t smgr_delete_session(session_t *ses, uint32_t flags)
 {
 	ENT_FUNC(3);
 
-	dbg(5, "Delete old session: si=0x%p, refcnt=%d", si, atomic_read(&si->refcnt));
+	dbg(5, "Delete old session: ses=0x%p, refcnt=%d", ses, atomic_read(&ses->refcnt));
 
 	if (flags & SMGR_DEL_SAVE_LOG) {
 		// 세션 종료시 INFO 로그도 같이 남김 (통계에서 사용)
-#if 0
-		if (si->action & ACT_LOG_INFO) {
-			wlog_session(&si->nsk, LOG_STAT_INFO, 0, NULL, si->mrule.fw, si);
+		if (ses->action & ACT_LOG_INFO) {
+			nslog_session(ses, NSLOG_STAT_INFO);
 		}
 
-		if (si->action & ACT_LOG_CLOSE) {
-			wlog_session(&si->nsk, LOG_STAT_CLOSE, 0, NULL, si->mrule.fw, si);
+		if (ses->action & ACT_LOG_CLOSE) {
+			nslog_session(ses, NSLOG_STAT_CLOSE);
 		}
-#endif
 	}
 
-	smgr_remove_alist(g_smgr, si);
+	smgr_remove_alist(g_smgr, ses);
 
-	session_remove(g_smgr->stab, si);
-	nstimer_remove(&si->timer);
+	session_remove(g_smgr->stab, ses);
+	nstimer_remove(&ses->timer);
 
 	return 0;
 }
 
 int32_t smgr_delete_by_ip(ip_t ip, int32_t kind)
 {
-	session_t *si = NULL, *n;
+	session_t *ses = NULL, *n;
 	ip_t	*cmp_ip;
 	int32_t del_cnt = 0;
 
 START:
 	ns_rw_lock_irq(&g_smgr->smgr_lock) {
 
-		list_for_each_entry_safe(si, n, &g_smgr->all_slist, alist) {
+		list_for_each_entry_safe(ses, n, &g_smgr->all_slist, alist) {
 
 			switch (kind) {
 			default:
 			case SMGR_DEL_SKEY_SRC:
-				cmp_ip = &si->skey.src;
+				cmp_ip = &ses->skey.src;
 				break;
 
 			case SMGR_DEL_SKEY_DST:
-				cmp_ip = &si->skey.dst;
+				cmp_ip = &ses->skey.dst;
 				break;
 
 			case SMGR_DEL_SNAT:
-				cmp_ip = &si->natinfo.ip[0];
+				cmp_ip = &ses->natinfo.ip[0];
 				break;
 
 			case SMGR_DEL_DNAT:
-				cmp_ip = &si->natinfo.ip[1];
+				cmp_ip = &ses->natinfo.ip[1];
 				break;
 
 			}
@@ -160,13 +159,13 @@ START:
 				del_cnt++;
 				// 지울 세션은 6초(DSYNC를 위한 5초 + 1)후 삭제 된다.
 				// DSYNC가 동작하는 경우 싱크가 이루어져서 삭제 된다.
-				//lft_change_timeout(&si->lft, 6);
+				//lft_change_timeout(&ses->lft, 6);
 
 				// 그러나 패킷이 계속 들어 오는 경우 세션이 계속 살아 있게 된다.
 				// 그래서 바로 지워야 한다.
 				// unlock없이 호출하면 deadlock이다.
 				ns_rw_unlock_irq(&g_smgr->smgr_lock);
-				smgr_delete_session(si, 0);
+				smgr_delete_session(ses, 0);
 				goto START;
 			}
 		}
@@ -182,7 +181,7 @@ int32_t smgr_show_session_info(ioctl_data_t *iodata)
 	ioctl_get_sess_t *user_sinfo;
 	ioctl_session_t *is;
 	uint32_t scnt, max_cnt, len, idx;
-	session_t *si, *n;
+	session_t *ses, *n;
 	ioctl_get_sess_t *in = (ioctl_get_sess_t*)iodata->in;
 
 	ENT_FUNC(3);
@@ -210,7 +209,7 @@ int32_t smgr_show_session_info(ioctl_data_t *iodata)
 	idx = 0;
 	is = (ioctl_session_t*)user_sinfo->data;
 
-	list_for_each_entry_safe(si, n, &g_smgr->all_slist, alist) {
+	list_for_each_entry_safe(ses, n, &g_smgr->all_slist, alist) {
 		if (idx < in->start_idx) {
 			idx ++;
 			continue;
@@ -220,7 +219,7 @@ int32_t smgr_show_session_info(ioctl_data_t *iodata)
 		uint32_t ctime = nstimer_get_time();
 
 		skey_t *dsk = &s->skey;
-		skey_t *ssk = &si->skey;
+		skey_t *ssk = &ses->skey;
 
 		dsk->src = ssk->src;
 		dsk->dst = ssk->dst;
@@ -228,11 +227,11 @@ int32_t smgr_show_session_info(ioctl_data_t *iodata)
 		dsk->dp = ssk->dp;
 		dsk->proto = ssk->proto;
 
-		s->sid = si->sid;
-		s->born_time = si->born_time;
-		s->timeout = nstimer_get_lifetime(ctime, si->timer.timeout, si->timer.timestamp);
+		s->sid = ses->sid;
+		s->born_time = ses->born_time;
+		s->timeout = nstimer_get_lifetime(ctime, ses->timer.timeout, ses->timer.timestamp);
 
-		s->fwpolicy_id = si->mp_fw.policy ? si->mp_fw.policy->rule_id : 0;
+		s->fwpolicy_id = ses->mp_fw.policy ? ses->mp_fw.policy->rule_id : 0;
 
 		scnt ++;
 		idx ++;
@@ -249,26 +248,26 @@ int32_t smgr_show_session_info(ioctl_data_t *iodata)
 	return 0;
 }
 
-session_t *smgr_get_ftpdata_parent(session_t *si)
+session_t *smgr_get_ftpdata_parent(session_t *ses)
 {
-	if (si->tcpst.pftpparent != NULL &&
-		!(si->action & ACT_PRXY_FTP)) {
+	if (ses->tcpst.pftpparent != NULL &&
+		!(ses->action & ACT_PRXY_FTP)) {
 
-		return (session_t *)si->tcpst.pftpparent;
+		return (session_t *)ses->tcpst.pftpparent;
 	}
 
 	return NULL;
 }
 
-void smgr_set_ftpdata_parent(session_t *si, session_t *parent)
+void smgr_set_ftpdata_parent(session_t *ses, session_t *parent)
 {
 #if 0
-	if (si) {
+	if (ses) {
 		if (parent) {
 			session_hold(parent);
 		}
 
-		si->tcpst.pftpparent = (void *)parent;
+		ses->tcpst.pftpparent = (void *)parent;
 	}
 #endif
 }
@@ -276,7 +275,7 @@ void smgr_set_ftpdata_parent(session_t *si, session_t *parent)
 int32_t smgr_slow_main(ns_task_t *nstask)
 {
 	smgr_t *smgr = g_smgr;
-	session_t *si = NULL;
+	session_t *ses = NULL;
 	sec_policy_t *fwp=NULL, *natp=NULL;
 	policyset_t  *fwps=NULL, *natps = NULL;
 	int32_t ret = NS_DROP;
@@ -313,43 +312,43 @@ int32_t smgr_slow_main(ns_task_t *nstask)
 		}
 	}
 
-	si = session_alloc();
-	if (si == NULL) {
+	ses = session_alloc();
+	if (ses == NULL) {
 		dbg(2, "Cannot alloc a new session");
 		goto ERR;
 	}
 
-	memcpy(&si->skey, &nstask->skey, sizeof(skey_t));
+	memcpy(&ses->skey, &nstask->skey, sizeof(skey_t));
 
-	si->sid = smgr_get_next_sid();
-	si->born_time = nstimer_get_time();
-	//si->timeout = policy->timeout;
-	si->timeout = -1; 	// to use system default value
-	si->action = fwp->action;
-	si->action = ACT_ALLOW;
+	ses->sid = smgr_get_next_sid();
+	ses->born_time = nstimer_get_time();
+	//ses->timeout = policy->timeout;
+	ses->timeout = -1; 	// to use system default value
+	ses->action = fwp->action;
+	ses->action = ACT_ALLOW | ACT_LOG_CREATE | ACT_LOG_CLOSE;
 
-	memcpy(&si->mp_fw, &nstask->mp_fw, sizeof(mpolicy_t));
+	memcpy(&ses->mp_fw, &nstask->mp_fw, sizeof(mpolicy_t));
 	// XXX: no need to increase refcnt because nstask already had
 	//pmgr_policyset_hold(fwps);
 
 	if (natp) {
-		if (nat_bind_info(si, &nstask->mp_nat, nstask->skey.inic)) {
+		if (nat_bind_info(ses, &nstask->mp_nat, nstask->skey.inic)) {
 			goto ERR;
 		}
 
-		si->action |= natp->action;
-		memcpy(&si->mp_nat, &nstask->mp_nat, sizeof(mpolicy_t));
+		ses->action |= natp->action;
+		memcpy(&ses->mp_nat, &nstask->mp_nat, sizeof(mpolicy_t));
 		// XXX: no need to increase refcnt because nstask already had
 		//pmgr_policyset_hold(natps);
 	}
 
-	smgr_add_session(smgr, si);
+	smgr_add_session(smgr, ses);
 
-	nstask->si = si;
-	session_hold(si);
+	nstask->ses = ses;
+	session_hold(ses);
 
-	// 최초에 만들어 진 세션은 정방향 처리 한다.
-	nstask->flags |= TASK_FLAG_REQ;
+	// 최초에 만들어진 세션은 정방향 처리 한다.
+	nstask->flags |= TASK_FLAG_DIR_CS;
 
 	// 새로운 세션 이다.
 	nstask->flags |= TASK_FLAG_NEW_SESS;
@@ -373,8 +372,8 @@ ERR:
 		pmgr_release_policyset(natps);
 	}
 
-	if (si) {
-		session_free(si);
+	if (ses) {
+		session_free(ses);
 	}
 
 	return NS_DROP;
@@ -384,33 +383,33 @@ int32_t smgr_timeout(ns_task_t *nstask)
 {
 	iph_t		*iph;
 	int32_t		timeout = 0, parent_timeout=0, state_changed = 0, tm_change = 0;
-	session_t 	*si, *parent = NULL;
+	session_t 	*ses, *parent = NULL;
 	int			oldst1=0, oldst2=0;
 
 	ENT_FUNC(3);
 
 	iph = ns_get_ip_hdr(nstask);
-	si = nstask->si;
-	if (unlikely(si == NULL)) {
+	ses = nstask->ses;
+	if (unlikely(ses == NULL)) {
 		return NS_ACCEPT;
 	}
 
 	switch (iph->next_proto_id) {
 	case IPPROTO_UDP:
-		if (si->timeout != -1) {
-			timeout = si->timeout;
+		if (ses->timeout != -1) {
+			timeout = ses->timeout;
 		}
 		else {
 			// UDP에서 응답 패킷이 있는 경우 양방향 통신으로 보고
 			// 응답이 완료 되었으므로 타임아웃을 줄인다.
-			timeout = ISREQ(nstask) ? GET_OPT_VALUE(timeout_udp) : GET_OPT_VALUE(timeout_udp_reply);
+			timeout = IS_DIR_CS(nstask) ? GET_OPT_VALUE(timeout_udp) : GET_OPT_VALUE(timeout_udp_reply);
 		}
 
 		break;
 
 	case IPPROTO_TCP:
 		timeout = GET_OPT_VALUE(timeout_close); 	// 10 sec
-		parent = smgr_get_ftpdata_parent(si);
+		parent = smgr_get_ftpdata_parent(ses);
 
 		// TCP seq를 검사한다.
 		if (tcp_track_seq(nstask) && GET_OPT_VALUE(drop_tcp_oow)) {
@@ -420,8 +419,8 @@ int32_t smgr_timeout(ns_task_t *nstask)
 			return NS_DROP;
 		}
 
-		oldst1 = si->tcpst.tseq[0].state;
-		oldst2 = si->tcpst.tseq[1].state;
+		oldst1 = ses->tcpst.tseq[0].state;
+		oldst2 = ses->tcpst.tseq[1].state;
 
 		state_changed = tcp_track_states(nstask, &timeout);
 		// the session came from Magic, so send DSYNC Update
@@ -432,19 +431,19 @@ int32_t smgr_timeout(ns_task_t *nstask)
 		}
 
 		dbg(5, "Update TCP session: SID=%u, timeout=%d, state=%d:%d -> %d:%d, tcp_changed=%d",
-			si->sid,
+			ses->sid,
 			timeout,
 			oldst1, oldst2,
-			si->tcpst.tseq[0].state,
-			si->tcpst.tseq[1].state, state_changed);
+			ses->tcpst.tseq[0].state,
+			ses->tcpst.tseq[1].state, state_changed);
 
 		break;
 
 	case IPPROTO_ICMP:
 		state_changed = 1;
 
-		if (ISREQ(nstask)) {
-			timeout = si->timeout == -1 ? GET_OPT_VALUE(timeout_icmp) : si->timeout;
+		if (IS_DIR_CS(nstask)) {
+			timeout = ses->timeout == -1 ? GET_OPT_VALUE(timeout_icmp) : ses->timeout;
 		}
 		else {
 			timeout = GET_OPT_VALUE(timeout_icmp_reply);
@@ -453,14 +452,14 @@ int32_t smgr_timeout(ns_task_t *nstask)
 		break;
 
 	default:
-		timeout = si->timeout == -1 ? GET_OPT_VALUE(timeout_unknown) : si->timeout;
+		timeout = ses->timeout == -1 ? GET_OPT_VALUE(timeout_unknown) : ses->timeout;
 	}
 
-	tm_change = nstimer_change_timeout(&si->timer, timeout);
+	tm_change = nstimer_change_timeout(&ses->timer, timeout);
 
 	// ftpdata has to update its control session
 	if (parent && tm_change) {
-		parent_timeout = si->timeout == -1 ? GET_OPT_VALUE(timeout_tcp) : si->timeout;
+		parent_timeout = ses->timeout == -1 ? GET_OPT_VALUE(timeout_tcp) : ses->timeout;
 		nstimer_change_timeout(&parent->timer, parent_timeout);
 	}
 
@@ -487,15 +486,6 @@ int32_t smgr_init(void)
 		return -1;
 	}
 
-#if 0
-	// first time after booting the system
-	if (netshield_scache == NULL) {
-		netshield_create_sem_cache(sizeof(session_t));
-	}
-
-	ns_mem_assert(netshield_scache, "session cache", return -1);
-#endif
-
 	ns_init_lock(&smgr->smgr_lock);
 	INIT_LIST_HEAD(&smgr->all_slist);
 
@@ -507,14 +497,14 @@ int32_t smgr_init(void)
 void smgr_clean(void)
 {
 	void *stab;
-	session_t *si, *n;
+	session_t *ses, *n;
 
 	ENT_FUNC(3);
 
 	dbg(3, "Clean Session Manager");
 
-	list_for_each_entry_safe(si, n, &g_smgr->all_slist, alist) {
-		smgr_delete_session(si, 0);
+	list_for_each_entry_safe(ses, n, &g_smgr->all_slist, alist) {
+		smgr_delete_session(ses, 0);
 	}
 
 	stab = g_smgr->stab;
@@ -536,9 +526,9 @@ int32_t smgr_fast_main(ns_task_t *nstask)
 
 	DBGKEY(0, "TASK_KEY", &nstask->skey);
 
-	nstask->si = session_search(g_smgr->stab, &nstask->skey);
+	nstask->ses = session_search(g_smgr->stab, &nstask->skey);
 
-	if (nstask->si == NULL) {
+	if (nstask->ses == NULL) {
 		dbg(0, "-----+ Begin Slow Path +-----");
 		// call pmgr_main()
 		append_cmd(nstask, pmgr);
@@ -547,7 +537,7 @@ int32_t smgr_fast_main(ns_task_t *nstask)
 		dbg(0, "++++++ Begin Fast Path ++++++");
 
 		if (!(nstask->skey.flags & SKF_REVERSE_MATCHED)) {
-			nstask->flags |= TASK_FLAG_REQ;
+			nstask->flags |= TASK_FLAG_DIR_CS;
 		}
 
 		smgr_post_main(nstask);
@@ -558,17 +548,45 @@ int32_t smgr_fast_main(ns_task_t *nstask)
 
 int32_t smgr_post_main(ns_task_t *nstask)
 {
-	session_t *si = nstask->si;
+	skb_t *skb;
+	session_t *ses = nstask->ses;
 
 	ENT_FUNC(3);
+
+	skb = ns_get_skb(nstask);
 
 	// call smgr_timeout()
 	append_cmd(nstask, smgr_timeout);
 
-	if (si->action & ACT_NAT) {
+	if (ses->action & ACT_NAT) {
 		// call nat_main()
 		append_cmd(nstask, nat);
 	}
 
+	if (ses->action & ACT_LOG_CREATE) {
+		nslog_session(ses, NSLOG_STAT_OPEN);
+		ses->action &= ~ACT_LOG_CREATE;
+	}
+
+	ses->pktcnt[DIR_IDX(nstask)].packets ++;
+	ses->pktcnt[DIR_IDX(nstask)].bytes += skb->pkt_len;
+
 	return NS_ACCEPT;
 }
+
+
+///////////////////////
+
+static nscmd_module_t mod_smgr[] = {
+	[0] = {CMD_ITEM(smgr_timeout, SMGR_TIMEOUT, smgr_timeout, NULL, NULL, NULL)},
+	[1] = {CMD_ITEM(smgr_fast,  SMGR_FAST, smgr_fast_main, smgr_init, smgr_clean, NULL)},
+	[2] = {CMD_ITEM(smgr_slow, SMGR_SLOW, smgr_slow_main, NULL, NULL, NULL)},
+};
+
+static void __attribute__ ((constructor)) smgr_register(void)
+{
+	nscmd_register(NSCMD_IDX(smgr_timeout), &mod_smgr[0]);
+	nscmd_register(NSCMD_IDX(smgr_fast), &mod_smgr[1]);
+	nscmd_register(NSCMD_IDX(smgr_slow), &mod_smgr[2]);
+}
+

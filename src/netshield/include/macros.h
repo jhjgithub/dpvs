@@ -39,8 +39,9 @@
 #define IP6_FMT 				"%pI6c"
 #define SKEY_FMT6				"[" IP6_FMT "-%d->" IP6_FMT "-%d(%d)]"
 
-#define ISREQ(u) 				(!!(u->flags & TASK_FLAG_REQ))
-#define ISRES(u) 				( !(u->flags & TASK_FLAG_REQ))
+#define IS_DIR_CS(u)			(u->flags & TASK_FLAG_DIR_CS)
+#define IS_DIR_SC(u) 			(!(u->flags & TASK_FLAG_DIR_CS))
+#define DIR_IDX(t) 				(IS_DIR_SC(t)) 	// 0: c -> s, 1: s -> c
 #define bzero(a, b) 			memset((a), 0, (b))
 
 #define PREFETCH(a,rw,l) 		__builtin_prefetch(a, rw, l)

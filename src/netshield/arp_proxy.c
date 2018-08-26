@@ -12,6 +12,7 @@
 #include <utils.h>
 #include <arp_proxy.h>
 #include <ioctl.h>
+#include <cmds.h>
 
 
 // 방화벽에서 NAT를 사용시 NAT IP에 대한 ARP 응답 모듈
@@ -292,5 +293,16 @@ void arpp_clean(void)
 {
 	g_ns_arphook = NULL;
 	arpp_clean_ip();
+}
+
+//////////////////////////
+
+static nscmd_module_t mod_arpp = {
+	CMD_ITEM(arpp, ARPP, NULL, arpp_init, arpp_clean, NULL)
+};
+
+static void __attribute__ ((constructor)) arpp_register(void)
+{
+	nscmd_register(NSCMD_IDX(arpp), &mod_arpp);
 }
 

@@ -152,6 +152,7 @@ typedef uint32_t 			ipolicy_id_t;	///< for IPS Policy ID
 
 typedef __int128_t 			int128_t;
 typedef __uint128_t 		uint128_t;
+typedef unsigned long 		ulong_t;
 typedef uint32_t 			nic_id_t;
 typedef struct ipv4_hdr 	iph_t;
 typedef struct ipv6_hdr     iph6_t;

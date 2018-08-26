@@ -165,7 +165,7 @@ int netshield_main(ns_task_t *nstask)
 
 END_MAIN:
 
-	dbg(3, "All processing for Security is done: %s(%d)",
+	dbg(3, "All processing for Security is done: %s(%d)", 
 		ns_get_verdict(ret), ret);
 	dbg(3, "=====> End NetShield <=====");
 
@@ -192,3 +192,4 @@ END_MAIN:
 
 	return ret;
 }
+

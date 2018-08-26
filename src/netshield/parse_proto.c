@@ -584,3 +584,16 @@ int32_t parse_tcp_options(ns_task_t* nstask)
 	return 0;
 }
 
+///////////////////////////////////
+
+static nscmd_module_t mod_task[] = {
+	[0] = {CMD_ITEM(taskinfo, TASKINFO, init_task_info, NULL, NULL, NULL)},
+	[1] = {CMD_ITEM(inet, INET, parse_inet_protocol, NULL, NULL, NULL)},
+};
+
+static void __attribute__ ((constructor)) net_register(void)
+{
+	nscmd_register(NSCMD_IDX(taskinfo), &mod_task[0]);
+	nscmd_register(NSCMD_IDX(inet), &mod_task[1]);
+}
+

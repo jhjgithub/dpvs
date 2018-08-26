@@ -5,6 +5,11 @@
 #include <ns_timer.h>
 #include <nat.h>
 
+typedef struct _pkt_cnt_s {
+	uint64_t 	packets;
+	uint128_t 	bytes;
+} pkt_cnt_t;
+
 // NAT sequence number modifications for FTP Proxy
 typedef struct proxy_ftp_seq_t {
 	uint32_t correction_pos; 	///< position of the last TCP sequence number modification (if any)
@@ -101,7 +106,6 @@ typedef struct session_s{
 
 	atomic_t	refcnt;		///< 세션 참조 카운트
 	int32_t 	timeout; 	///< 룰에서 복사된 값이며, 룰에 타임아웃 값이 없는 경우(-1) 시스템 기본값 사용.
-	uint32_t 	drop_pkts;	///< dropped packet counts
 
 	//rcu_head_t 	rcu;
 	tcpst_t		tcpst; 		///< tcp stat
@@ -114,6 +118,7 @@ typedef struct session_s{
 	//nstimer_t 	timer  ____cacheline_aligned_in_smp;
 	nstimer_t 	timer;
 
+	pkt_cnt_t 	pktcnt[3]; 	// 0: DIR_CS, 1: DIR_SC, 2: drop
 } __attribute__((packed, aligned(4))) session_t;
 
 

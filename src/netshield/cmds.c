@@ -11,6 +11,7 @@
 #include <smgr.h>
 #include <pmgr.h>
 #include <options.h>
+#include <log.h>
 
 
 //////////////////////////////////////////////////////
@@ -21,42 +22,34 @@ DECLARE_DBG_LEVEL(2);
 
 //////////////////////////////////////////////////////
 
-extern int32_t parse_inet_protocol(ns_task_t *nstask);
-extern int32_t init_task_info(ns_task_t *nstask);
-extern int32_t frag4_main(ns_task_t *nstask);
 
 //////////////////////////////////////////////////////
-
-/*** *INDENT-OFF* ***/
-nscmd_module_t nscmd_module_list[] =
-{
-#if 0
-	//  name            short_name  run                 init                clean           age
-	CMD_ITEM(nsdev,      NSDEV,      NULL,              nsdev_init,         nsdev_clean,    NULL),
-#endif
-
-	CMD_ITEM(arpp,       ARPP,        NULL,          	arpp_init,           arpp_clean,    NULL),
-	CMD_ITEM(nat,        NAT,         nat_main,          NULL,               NULL,          NULL),
-	CMD_ITEM(timer,     TIMER,      NULL,              	nstimer_init,       nstimer_clean,  nstimer_ageing),
-	CMD_ITEM(smgr_timeout,SMGR_TIMEOUT,smgr_timeout,    NULL,               NULL,           NULL),
-	CMD_ITEM(smgr_fast,	SMGR_FAST, 	smgr_fast_main,  	smgr_init,          smgr_clean,     NULL),
-	CMD_ITEM(smgr_slow, SMGR_SLOW,  smgr_slow_main,    	NULL,    		       NULL,     NULL),
-	CMD_ITEM(taskinfo,  TI,        	init_task_info,     NULL,               NULL,           NULL),
-	CMD_ITEM(inet,      IN,        	parse_inet_protocol,NULL,             	NULL,           NULL),
-	CMD_ITEM(pmgr, 		PMGR_MAIN, 	pmgr_main,         pmgr_init,           pmgr_clean,     NULL),
-	CMD_ITEM(frag4,     FR4,        frag4_main,        NULL,               NULL,           NULL),
-	CMD_ITEM(log,       LOG,        NULL,              NULL,               NULL,           NULL),
-
-	[NS_CMD_MAX] = {.name=NULL, .short_name= NULL, .run=NULL, .init=NULL, .clean=NULL, .age=NULL}
-
-};
-
-/*** *INDENT-ON* ***/
-
+static nscmd_module_t *nscmd_module_list[NS_CMD_MAX] = { NULL, };
 
 /* -------------------------------- */
 /*         Code 영역                */
 /* -------------------------------- */
+
+int32_t nscmd_register(uint32_t idx, nscmd_module_t *mod)
+{
+	if (idx >= NS_CMD_MAX || mod == NULL) {
+		return -1;
+	}
+
+	nscmd_module_list[idx] = mod;
+	//printf("Register: %s \n", mod->name);
+
+	return 0;
+}
+
+nscmd_module_t* nscmd_get_module(uint32_t idx)
+{
+	if (idx >= NS_CMD_MAX) {
+		return NULL;
+	}
+
+	return nscmd_module_list[idx];
+}
 
 int32_t nscmd_append(nscmd_t *c, uint8_t cmd)
 {
@@ -103,14 +96,14 @@ nscmd_module_t* nscmd_pop(nscmd_t *c)
 	c->head = (c->head + 1) % MAX_CMDS;
 	cmd = c->stack[c->head];
 
-	return &nscmd_module_list[cmd];
+	return nscmd_get_module(cmd);
 }
 
 ////////////////////////////////////
 
 int nscmd_callback_timer(void* arg)
 {
-	int32_t i;
+	uint32_t i;
 	uint32_t t;
 	nscmd_module_t *c;
 
@@ -118,8 +111,8 @@ int nscmd_callback_timer(void* arg)
 	t = nstimer_inc_time();
 
 	for (i = 0; i < NS_CMD_MAX; i++) {
-		c = &nscmd_module_list[i];
-		if (!c->age) {
+		c = nscmd_get_module(i);
+		if (c == NULL || c->age == NULL) {
 			continue;
 		}
 
@@ -139,25 +132,27 @@ int nscmd_callback_timer(void* arg)
 	return DTIMER_OK;
 }
 
-char* nscmd_get_module_short_name(int32_t id)
+char* nscmd_get_module_short_name(uint32_t id)
 {
-	if (id < 0 || id >= NS_CMD_MAX) {
+	nscmd_module_t *c  = nscmd_get_module(id);
+
+	if (c == NULL) {
 		return NULL;
 	}
 
-	return nscmd_module_list[id].short_name;
+	return c->short_name;
 }
 
 int32_t nscmd_run_cmds(ns_task_t *nstask)
 {
 	int32_t ret = NS_ACCEPT;
 	nscmd_module_t *cmd = NULL;
-	session_t *si;
+	session_t *ses;
 
 	ENT_FUNC(3);
 
 	while ((cmd = nscmd_pop(&nstask->cmd)) != NULL) {
-		dbg(5, "Run module: %s", cmd->name);
+		dbg(7, "Run module: %s", cmd->name);
 
 		if (cmd->run == NULL) {
 			continue;
@@ -195,7 +190,7 @@ int32_t nscmd_run_cmds(ns_task_t *nstask)
 		return ret;
 	}
 
-	si = nstask->si;
+	ses = nstask->ses;
 
 #if 0
 	// ACCEPT/DROP 모두 통계 생성
@@ -204,9 +199,9 @@ int32_t nscmd_run_cmds(ns_task_t *nstask)
 	}
 #endif
 
-	if (likely(nstask->si != NULL)) {
-		session_release(nstask->si);
-		nstask->si = NULL;
+	if (likely(nstask->ses != NULL)) {
+		session_release(nstask->ses);
+		nstask->ses = NULL;
 	}
 
 	if (nstask->mp_fw.policy_set) {
@@ -218,8 +213,8 @@ int32_t nscmd_run_cmds(ns_task_t *nstask)
 	}
 
 	if (ret == NS_DEL_SESSION) {
-		if (si) {
-			smgr_delete_session(si, 0);
+		if (ses) {
+			smgr_delete_session(ses, 0);
 		}
 
 		ret = NS_DROP;
@@ -289,15 +284,15 @@ void nscmd_setup_cmds(ns_task_t *nstask, uint8_t protocol)
 
 int32_t nscmd_init_module(void)
 {
-	int32_t i;
+	uint32_t i;
 	nscmd_module_t *c;
 
 	// 1. 각 컴퍼넌트 초기화
 	// 모든 모듈의 초기화는 여기서 수행 한다.
 
 	for (i = 0; i < NS_CMD_MAX; i++) {
-		c = &nscmd_module_list[i];
-		if (!c->init) {
+		c = nscmd_get_module(i);
+		if (c == NULL || c->init == NULL) {
 			continue;
 		}
 
@@ -331,7 +326,7 @@ void nscmd_clean_module(void)
 
 	// 3. 각 컴퍼넌트 제거
 	for (i = NS_CMD_MAX - 1; i >= 0; i--) {
-		c = &nscmd_module_list[i];
+		c = nscmd_get_module(i);
 		if (!c->clean) {
 			continue;
 		}

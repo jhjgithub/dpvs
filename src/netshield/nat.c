@@ -38,39 +38,39 @@ int32_t nat_get_ip_count(nat_policy_t *n)
 }
 
 #if 0
-int32_t nat_get_natkey(session_t* si, ip4_t* ip, uint16_t* port)
+int32_t nat_get_natkey(session_t* ses, ip4_t* ip, uint16_t* port)
 {
-	if (si->action & (ACT_SNAT|ACT_BNAT)) {
-		*ip = si->rsk.dst;
-		if (si->skey.proto == IPPROTO_ICMP)
-			*port = si->natinfo.sp;
+	if (ses->action & (ACT_SNAT|ACT_BNAT)) {
+		*ip = ses->rsk.dst;
+		if (ses->skey.proto == IPPROTO_ICMP)
+			*port = ses->natinfo.sp;
 		else
-			*port = si->rsk.dp;
+			*port = ses->rsk.dp;
 	}
 	else {
 		// XXX: DNAT인 경우에 여러가지 경우의 수를 검사 해야 한다.
-		*ip = si->skey.dst;
-		*port = si->skey.dp;
+		*ip = ses->skey.dst;
+		*port = ses->skey.dp;
 	}
 
 	return 0;
 }
 #endif
 
-uint32_t nat_make_hash(session_t *si)
+uint32_t nat_make_hash(session_t *ses)
 {
 	struct hashdata_s k;
 	uint32_t hash = 0;
-	skey_t *skey = &si->skey;
-	natinfo_t *natinfo = &si->natinfo;
+	skey_t *skey = &ses->skey;
+	natinfo_t *natinfo = &ses->natinfo;
 
 	k.proto = skey->proto;
 
-	if (si->action & ACT_SINGLE_NAT) {
+	if (ses->action & ACT_SINGLE_NAT) {
 		k.ip = skey->dst ^ natinfo->ip[0];
 		k.port  = skey->dp  ^ natinfo->port[0];
 	}
-	else if (si->action & ACT_BNAT) {
+	else if (ses->action & ACT_BNAT) {
 		k.ip = natinfo->ip[0] ^ natinfo->ip[1];
 		k.port  = natinfo->port[0]  ^ natinfo->port[1];
 	}
@@ -358,11 +358,11 @@ int32_t nat_reserve_port(nat_policy_t *natp, nat_ip_t *nip, uint16_t *new_port)
 	return ret;
 }
 
-int32_t nat_reserve_ip_port(nat_policy_t *natp, session_t *si, ip_t *new_ip, uint16_t *new_port)
+int32_t nat_reserve_ip_port(nat_policy_t *natp, session_t *ses, ip_t *new_ip, uint16_t *new_port)
 {
 	nat_ip_t *nip = NULL;
 	int32_t ret = -1, found=0;
-	ip4_t sip =  si->skey.src;
+	ip4_t sip =  ses->skey.src;
 
 	ENT_FUNC(3);
 
@@ -429,7 +429,7 @@ ip4_t nat_get_masked_ip(ip4_t src, ip4_t nat_ip, uint32_t mask)
 	return new_ip;
 }
 
-int32_t nat_bind_snat_info(session_t *si, nat_policy_t *natp, ip_t *new_ip, uint16_t *new_port)
+int32_t nat_bind_snat_info(session_t *ses, nat_policy_t *natp, ip_t *new_ip, uint16_t *new_port)
 {
 	int32_t ret = 0;
 
@@ -437,16 +437,16 @@ int32_t nat_bind_snat_info(session_t *si, nat_policy_t *natp, ip_t *new_ip, uint
 
 	switch (natp->flags & NATF_SNAT_MASK) {
 	case NATF_SNAT_MASKING: 
-		*new_ip = nat_get_masked_ip(si->skey.src, natp->nip[0], natp->nip[1]);
-		*new_port = si->skey.sp;
+		*new_ip = nat_get_masked_ip(ses->skey.src, natp->nip[0], natp->nip[1]);
+		*new_port = ses->skey.sp;
 		break;
 
 	case NATF_SNAT_HASH: 
 	case NATF_SNAT_NAPT:
 		ns_rw_lock_irq(&natp->nat_lock) {
-			if (nat_reserve_ip_port(natp, si, new_ip, new_port) == 0) {
+			if (nat_reserve_ip_port(natp, ses, new_ip, new_port) == 0) {
 				// 사용 완료후 세션이 삭제 될때 관련 데이터를 릴리즈 해라..
-				si->action |= ACT_NAT_RELEASE;
+				ses->action |= ACT_NAT_RELEASE;
 			}
 			else {
 				ret = -1;
@@ -466,7 +466,7 @@ int32_t nat_bind_snat_info(session_t *si, nat_policy_t *natp, ip_t *new_ip, uint
 	return ret;
 }
 
-int32_t nat_bind_dnat_info(session_t *si, nat_policy_t *natp, int32_t inic, ip_t *new_ip, uint16_t *new_port)
+int32_t nat_bind_dnat_info(session_t *ses, nat_policy_t *natp, int32_t inic, ip_t *new_ip, uint16_t *new_port)
 {
 	int32_t ret = 0;
 
@@ -477,7 +477,7 @@ int32_t nat_bind_dnat_info(session_t *si, nat_policy_t *natp, int32_t inic, ip_t
 		// ip 변경
 		// mask를 사용하는 경우 1:1 mapping이다.
 		if (natp->nip[1] != 0) {
-			*new_ip = nat_get_masked_ip(si->skey.dst, natp->nip[0], natp->nip[1]);
+			*new_ip = nat_get_masked_ip(ses->skey.dst, natp->nip[0], natp->nip[1]);
 		}
 		else {
 			*new_ip = natp->nip[0];
@@ -486,14 +486,14 @@ int32_t nat_bind_dnat_info(session_t *si, nat_policy_t *natp, int32_t inic, ip_t
 		// port가 지정 되어 있는 경우 변경
 		if (natp->nport[0] != 0)
 			*new_port = natp->nport[0];
-		else if (si->skey.proto == IPPROTO_ICMP) {
+		else if (ses->skey.proto == IPPROTO_ICMP) {
 			// virtual ip를 사용해서 DNAT를 거는 경우 icmp id가 잘못 되어 
 			// 항상 동일한 id로 nat 되는 버그가 있음.
 			// 원본 패킷의 id를 그래도 사용하게 복사함
-			*new_port = si->skey.sp;
+			*new_port = ses->skey.sp;
 		}
 		else {
-			*new_port = si->skey.dp;
+			*new_port = ses->skey.dp;
 		}
 
 		break;
@@ -506,7 +506,7 @@ int32_t nat_bind_dnat_info(session_t *si, nat_policy_t *natp, int32_t inic, ip_t
 		if (natp->nport[0] != 0)
 			*new_port = natp->nport[0];
 		else
-			*new_port = si->skey.dp;
+			*new_port = ses->skey.dp;
 
 		break;
 
@@ -519,7 +519,7 @@ int32_t nat_bind_dnat_info(session_t *si, nat_policy_t *natp, int32_t inic, ip_t
 	return ret;
 }
 
-int32_t nat_do_binding(session_t* si, nat_policy_t *natp, int32_t inic, ip_t *new_ip, uint16_t *new_port)
+int32_t nat_do_binding(session_t* ses, nat_policy_t *natp, int32_t inic, ip_t *new_ip, uint16_t *new_port)
 {
 	int32_t ret = -1;
 
@@ -548,20 +548,20 @@ int32_t nat_do_binding(session_t* si, nat_policy_t *natp, int32_t inic, ip_t *ne
 	*new_port = 0;
 
 	if (natp->flags & NATF_SNAT_MASK) {
-		ret = nat_bind_snat_info(si, natp, new_ip, new_port);
+		ret = nat_bind_snat_info(ses, natp, new_ip, new_port);
 	}
 	else if (natp->flags & NATF_DNAT_MASK) {
-		ret = nat_bind_dnat_info(si, natp, inic, new_ip, new_port);
+		ret = nat_bind_dnat_info(ses, natp, inic, new_ip, new_port);
 	}
 
 	return ret;
 }
 
-int32_t nat_bind_info(session_t* si, mpolicy_t *mp_nat, nic_id_t inic)
+int32_t nat_bind_info(session_t* ses, mpolicy_t *mp_nat, nic_id_t inic)
 {
 	nat_policy_t *n[2];
 	int32_t ret=0, idx=0;
-	natinfo_t *natinfo = &si->natinfo;
+	natinfo_t *natinfo = &ses->natinfo;
 	sec_policy_t *fwp;
 
 	ENT_FUNC(3);
@@ -596,13 +596,13 @@ int32_t nat_bind_info(session_t* si, mpolicy_t *mp_nat, nic_id_t inic)
 	}
 
 	// for Single NAT
-	if ((ret=nat_do_binding(si, n[0], inic, &natinfo->ip[idx], &natinfo->port[idx]))) {
+	if ((ret=nat_do_binding(ses, n[0], inic, &natinfo->ip[idx], &natinfo->port[idx]))) {
 		return -1;
 	}
 
 	// for Both NAT
 	if (fwp->action & ACT_BNAT) {
-		if ((ret=nat_do_binding(si, n[1], inic, &natinfo->ip[1], &natinfo->port[1]))) {
+		if ((ret=nat_do_binding(ses, n[1], inic, &natinfo->ip[1], &natinfo->port[1]))) {
 			return -1;
 		}
 	}
@@ -617,7 +617,7 @@ int32_t nat_bind_info(session_t* si, mpolicy_t *mp_nat, nic_id_t inic)
 }
 
 #if 0
-int32_t nat_update_used_nat_info(session_t* si)
+int32_t nat_update_used_nat_info(session_t* ses)
 {
 	nat_policy_t* natp = NULL;
 	nat_ip_t* nip;
@@ -626,13 +626,13 @@ int32_t nat_update_used_nat_info(session_t* si)
 
 	ENT_FUNC(3);
 
-	if (!si || !si->mrule.nat)
+	if (!ses || !ses->mrule.nat)
 		return -1;
 
-	natp = si->mrule.nat->nat_policy[0];
+	natp = ses->mrule.nat->nat_policy[0];
 
 	// port port_bitmap을 사용하는 경우는 아래의 경우에 한정한다.
-	if (!(si->action & ACT_NAT_RELEASE) || !natp) {
+	if (!(ses->action & ACT_NAT_RELEASE) || !natp) {
 		return -1;
 	}
 
@@ -647,7 +647,7 @@ int32_t nat_update_used_nat_info(session_t* si)
 			nat_init_ip_obj(natp);
 		}
 
-		nat_get_natkey(si, &ip, &port);
+		nat_get_natkey(ses, &ip, &port);
 		nip = find_ip_obj_by_ip(natp, ip);
 		if (nip) {
 			nat_reserve_port(natp, nip, &port);
@@ -658,17 +658,17 @@ int32_t nat_update_used_nat_info(session_t* si)
 
 	} ns_rw_unlock_irq(&natp->nat_lock);
 
-	si->mrule.nat->sc ++;
-	si->mrule.nat->hits ++;
+	ses->mrule.nat->sc ++;
+	ses->mrule.nat->hits ++;
 
 	// 룰이 마지막으로 사용된 시간
-	si->mrule.nat->timestamp = wise_get_time();
+	ses->mrule.nat->timestamp = wise_get_time();
 
 	return 0;
 }
 #endif
 
-int32_t nat_release_info(session_t* si, mpolicy_t* mp)
+int32_t nat_release_info(session_t* ses, mpolicy_t* mp)
 {
 	nat_ip_t *nip;
 	uint16_t port=0;
@@ -679,19 +679,19 @@ int32_t nat_release_info(session_t* si, mpolicy_t* mp)
 
 	ENT_FUNC(3);
 
-	if (!(si->action & ACT_NAT_RELEASE) || fwp == NULL) {
-		//dbg(0, "Can't release NAT info: 0x%llx, natp=0x%p", si->action, fwp);
+	if (!(ses->action & ACT_NAT_RELEASE) || fwp == NULL) {
+		//dbg(0, "Can't release NAT info: 0x%llx, natp=0x%p", ses->action, fwp);
 		return -1;
 	}
 
-	DBGKEY(9, SKEY, &si->skey);
+	DBGKEY(9, SKEY, &ses->skey);
 
 	fwp = mp->policy;
 
 	for (i=0; i<2; i++) {
 
-		ip = si->natinfo.ip[i];
-		port = si->natinfo.port[i];
+		ip = ses->natinfo.ip[i];
+		port = ses->natinfo.port[i];
 		p = pmgr_get_nat_policy(mp->policy_set, fwp->nat_policy_id[i]);
 
 		if (ip == 0 || p == NULL) {
@@ -708,11 +708,11 @@ int32_t nat_release_info(session_t* si, mpolicy_t* mp)
 			bitop_clear_bit(port, (volatile unsigned long *)nip->port.port_bitmap);
 			nip->free_cnt ++;
 
-			dbg(5, "si=0x%p, Release ip=" IP_FMT ", port=%u, free_cnt=%d", 
-				si, IPH(ip), port, nip->free_cnt);
+			dbg(5, "ses=0x%p, Release ip=" IP_FMT ", port=%u, free_cnt=%d", 
+				ses, IPH(ip), port, nip->free_cnt);
 		}
 		else {
-			dbg(0, "port port_bitmap is NULL, si=0x%p, release ip=" IP_FMT ", port=%u", si, IPH(ip), port);
+			dbg(0, "port port_bitmap is NULL, ses=0x%p, release ip=" IP_FMT ", port=%u", ses, IPH(ip), port);
 		}
 
 		ns_rw_unlock_irq(&p->nat_lock);
@@ -823,9 +823,9 @@ int32_t nat_apply_icmperr(ns_task_t* nstask, int32_t is_dnat)
 
 	DUMP_PKT(4, iph, nstask->skey.inic);
 
-	skey = &nstask->si->skey;
+	skey = &nstask->ses->skey;
 	h = (uint8_t* )iph + ((iph->version_ihl & 0xf) << 2);
-	n = &nstask->si->natinfo;
+	n = &nstask->ses->natinfo;
 
 	if (is_dnat) {
 		newip = skey->dst;
@@ -872,7 +872,7 @@ int32_t nat_apply_icmperr(ns_task_t* nstask, int32_t is_dnat)
 	}
 
 	// ip checksum
-	if (ISREQ(nstask)) {
+	if (IS_DIR_CS(nstask)) {
 		skey_t* k = &nstask->skey;
 		iph_t* org_iph;
 		icmph_t* ic;
@@ -925,8 +925,8 @@ int32_t nat_apply(ns_task_t* nstask, int32_t is_chg_dst, int32_t is_dnat)
 		skb->packet_type = ETH_PKT_HOST;
 	}
 
-	skey = &nstask->si->skey;
-	n = &nstask->si->natinfo;
+	skey = &nstask->ses->skey;
+	n = &nstask->ses->natinfo;
 
 	if (is_dnat) {
 		if (is_chg_dst) {
@@ -1043,7 +1043,7 @@ int32_t nat_main(ns_task_t* nstask)
 
 	ENT_FUNC(3);
 
-	if (!nstask->si) {
+	if (!nstask->ses) {
 		return NS_DROP;
 	}
 
@@ -1051,11 +1051,11 @@ int32_t nat_main(ns_task_t* nstask)
 	DUMP_PKT(0, ns_iph(skb), nstask->skey.inic);
 
 	// Both NAT
-	if (nstask->si->action & ACT_BNAT) {
+	if (nstask->ses->action & ACT_BNAT) {
 #if 0
 		// do SNAT
 		is_dnat = 0;
-		is_chg_dst = nat_truth_table(is_dnat, ISRES(nstask));
+		is_chg_dst = nat_truth_table(is_dnat, IS_DIR_SC(nstask));
 
 		if (is_chg_dst && 
 			!(nstask->flags & TASK_FLAG_HOOK_POST_ROUTING)) {
@@ -1070,7 +1070,7 @@ int32_t nat_main(ns_task_t* nstask)
 
 		// do DNAT
 		is_dnat = 1;
-		is_chg_dst = nat_truth_table(is_dnat, ISRES(nstask));
+		is_chg_dst = nat_truth_table(is_dnat, IS_DIR_SC(nstask));
 
 		if (is_chg_dst && 
 			!(nstask->flags & TASK_FLAG_HOOK_POST_ROUTING)) {
@@ -1093,7 +1093,7 @@ int32_t nat_main(ns_task_t* nstask)
 #else
 		// do SNAT, DNAT
 		for (is_dnat = 0; is_dnat < 2; is_dnat ++) {
-			is_chg_dst = nat_truth_table(is_dnat, ISRES(nstask));
+			is_chg_dst = nat_truth_table(is_dnat, IS_DIR_SC(nstask));
 
 			if ((is_chg_dst && !(nstask->flags & TASK_FLAG_HOOK_POST_ROUTING)) ||
 				(!is_chg_dst && (nstask->flags & TASK_FLAG_HOOK_POST_ROUTING))) {
@@ -1114,9 +1114,9 @@ int32_t nat_main(ns_task_t* nstask)
 #endif
 	}
 	// Single NAT
-	else if (nstask->si->action & ACT_SINGLE_NAT) {
-		is_dnat = (nstask->si->action & ACT_DNAT) != 0;
-		is_chg_dst = nat_truth_table(is_dnat, ISRES(nstask));
+	else if (nstask->ses->action & ACT_SINGLE_NAT) {
+		is_dnat = (nstask->ses->action & ACT_DNAT) != 0;
+		is_chg_dst = nat_truth_table(is_dnat, IS_DIR_SC(nstask));
 
 		// PRE_ROUTING: DNAT
 		// POST_ROUTPING: SNAT
@@ -1144,3 +1144,15 @@ END:
 
 	return ret;
 }
+
+///////////////////////////
+////
+static nscmd_module_t mod_nat = {
+	CMD_ITEM(nat, NAT, nat_main, NULL, NULL, NULL)
+};
+
+static void __attribute__ ((constructor)) nat_register(void)
+{
+	nscmd_register(NSCMD_IDX(nat), &mod_nat);
+}
+

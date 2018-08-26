@@ -44,7 +44,7 @@ void  	smgr_clean(void);
 int32_t smgr_fast_main(struct ns_task_s *nstask);
 int32_t smgr_slow_main(struct ns_task_s *nstask);
 int32_t smgr_timeout(struct ns_task_s *nstask);
-int32_t smgr_delete_session(struct session_s *si, uint32_t flags);
+int32_t smgr_delete_session(struct session_s *ses, uint32_t flags);
 int32_t smgr_delete_by_ip(ip_t ip, int32_t kind);
 uint32_t smgr_get_session_count(void);
 

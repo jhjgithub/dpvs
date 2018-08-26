@@ -5,6 +5,8 @@
 #define NSLOG_MOD_NAME_LEN 32
 #define NSLOG_NIC_NAME_LEN 16
 #define NSLOG_ZONE_NAME_LEN 64
+#define NSLOG_TYPE_SESSION 	LOG_LOCAL0
+#define NSLOG_TYPE_OTHERS 	LOG_LOCAL1
 
 struct nslog_buf_s;
 struct nslog_modinfo_s;
@@ -100,17 +102,6 @@ typedef struct nslog_pkt_s {
 	uint8_t 	dummy[3];
 } nslog_pkt_t;
 
-typedef struct nslog_traffic_s {
-	uint64_t 	packets;
-	uint128_t 	bytes;
-} nslog_traffic_t;
-
-enum {
-	NSLOG_DIR_CS = 0,
-	NSLOG_DIR_SC,
-	NSLOG_DIR_MAX
-};
-
 typedef struct nslog_session_s {
 	uint64_t 	sid;
 	uint32_t 	state;
@@ -118,7 +109,7 @@ typedef struct nslog_session_s {
 	time_t 		closetime;
 	time_t 		duration; 
 	uint32_t 	fwruleid;
-	nslog_traffic_t traffic[NSLOG_DIR_MAX]; // 0: c->s, 1: s->c
+	pkt_cnt_t 	pktcnt[3]; 		// 0: c -> s, 1: s -> c, 2: drop
 } nslog_session_t;
 
 typedef struct nslog_nat_s {
@@ -133,7 +124,7 @@ typedef struct nslog_nat_s {
 //
 
 nslog_output_handler_t* nslog_get_handler(uint32_t logfmt);
-int32_t nslog_print(int32_t id, int32_t lev, const char* fmt, ...);
+int32_t nslog_syslog(uint32_t lev, const char* fmt, ...);
 int32_t nslog_set_handler(uint32_t logfmt, nslog_output_handler_t *handler);
 int32_t nslog_put_char(nslog_buf_t *outbuf, char c);
 int32_t nslog_put_string(nslog_buf_t *outbuf, char *str, int len);
@@ -142,7 +133,9 @@ int32_t nslog_convert_duration(time_t dur, char *tbuf, int tbuf_len);
 int32_t nslog_output_ipv4(nslog_buf_t *outbuf, ip_t ip);
 char 	*nslog_get_state_name(uint32_t state);
 char 	*nslog_get_action_name(uint64_t act);
-void 	nslog_syslog(int facility, char *msg);
+int32_t nslog_session(session_t *sess, uint32_t logstate);
+int32_t nslog_init(void);
+void    nslog_clean(void);
 
 ////////////////////
 

@@ -2,8 +2,8 @@
 #define __NETSHIELD_TASK_H__
 
 // type of ns_task_t.flags
-#define TASK_FLAG_ICMPERR			0x00000001
-#define TASK_FLAG_REQ				0x00000002
+#define TASK_FLAG_DIR_CS			0x00000001  // Client -> Server
+#define TASK_FLAG_ICMPERR			0x00000002
 #define TASK_FLAG_NEW_SESS			0x00000004
 #define TASK_FLAG_TCP_ASSEMBLE		0x00000008
 #define TASK_FLAG_SYNP_OK 			0x00000010 // syn proxy에서 검증이 완료된 패킷임
@@ -57,7 +57,7 @@ typedef struct ns_task_s {
 	mpolicy_t 	mp_fw; 	// 16
 	mpolicy_t 	mp_nat; // 16
 
-	struct session_s *si;// 8
+	struct session_s *ses;// 8
 	int 		hook;
     void 		*in_port;
 	void 		*out_port;

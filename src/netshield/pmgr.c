@@ -537,3 +537,13 @@ ERR:
 	return ret;
 }
 
+///////////////////////////////////
+
+static nscmd_module_t mod_pmgr = {
+	CMD_ITEM(pmgr, PMGR, pmgr_main, pmgr_init, pmgr_clean, NULL)
+};
+
+static void __attribute__ ((constructor)) pmgr_register(void)
+{
+	nscmd_register(NSCMD_IDX(pmgr), &mod_pmgr);
+}
