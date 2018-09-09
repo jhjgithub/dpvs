@@ -323,6 +323,10 @@ void install_netif_keywords(void);
 
 int netif_callback_setup(const char *cb, char *name);
 
+#ifdef CONFIG_ENABLE_RX_INTERRUPT
+int netif_wakeup_thread(int outmsg);
+#endif
+
 /*************************** kni api *******************************/
 void kni_process_on_master(void);
 

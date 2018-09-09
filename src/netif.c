@@ -2389,13 +2389,13 @@ static void lcore_job_xmit(void *args)
             continue;
         }
 #endif
-        for (j = 0; j < lcore_conf[lcore2index[cid]].pqs[i].ntxq; j++) {
-            qconf = &lcore_conf[lcore2index[cid]].pqs[i].txqs[j];
-            if (qconf->len <= 0)
-                continue;
-            netif_tx_burst(cid, pid, j);
-            qconf->len = 0;
-        }
+		for (j = 0; j < lcore_conf[lcore2index[cid]].pqs[i].ntxq; j++) {
+			qconf = &lcore_conf[lcore2index[cid]].pqs[i].txqs[j];
+			if (qconf->len <= 0)
+				continue;
+			netif_tx_burst(cid, pid, j);
+			qconf->len = 0;
+		}
     }
 }
 
@@ -2423,10 +2423,12 @@ static void netif_lcore_init(void)
     timer_sched_interval_us = dpvs_timer_sched_interval_get();
 
     for (cid = 0; cid < DPVS_MAX_LCORE; cid++) {
-        if (rte_lcore_is_enabled(cid))
+        if (rte_lcore_is_enabled(cid)) {
             RTE_LOG(INFO, NETIF, "%s: lcore%d is enabled\n", __func__, cid);
-        else
-            RTE_LOG(INFO, NETIF, "%s: lcore%d is disabled\n", __func__, cid);
+		}
+        else {
+            //RTE_LOG(INFO, NETIF, "%s: lcore%d is disabled\n", __func__, cid);
+		}
     }
 
     /* build lcore fast searching table */
@@ -3620,6 +3622,12 @@ static struct rte_eth_conf default_port_conf = {
     .txmode = {
         .mq_mode = ETH_MQ_TX_NONE,
     },
+#ifdef CONFIG_ENABLE_RX_INTERRUPT
+	.intr_conf = {
+		//.lsc = 1,
+		.rxq = 1,
+	},
+#endif
     .fdir_conf = {
         .mode    = RTE_FDIR_MODE_PERFECT,
         .pballoc = RTE_FDIR_PBALLOC_64K,
@@ -3909,9 +3917,206 @@ static int netif_loop(void *dummy)
     return EDPVS_OK;
 }
 
+/////////////////////////////////
+//
+
+#if CONFIG_ENABLE_RX_INTERRUPT
+int g_intr_fd[DPVS_MAX_LCORE] = {-1,};
+
+int netif_wakeup_thread(int outmsg)
+{
+	int i,fd;
+	uint32_t vec;
+	struct rte_eth_dev *dev;
+	struct rte_intr_handle *intr_handle;
+
+	int pid = 1;
+	int qid = 0;
+
+	// ref: rte_eth_dev_rx_intr_ctl_q()
+	dev = &rte_eth_devices[pid];
+	intr_handle = dev->intr_handle;
+	//vec = intr_handle->intr_vec[qid];
+	//fd = intr_handle->efds[vec];
+	fd = intr_handle->fd;
+
+	if (outmsg) {
+		//RTE_LOG(INFO, NETIF, "########### pid=%d, fd=%d \n", pid, fd);
+	}
+
+	// wake up the thread
+	int u = 9999;
+	write(fd, &u, sizeof(u));
+
+	return 0;
+}
+
+static int event_register(struct netif_lcore_conf *lc_conf)
+{
+    int i, j;
+    portid_t pid;
+	queueid_t qid;
+	uint32_t data;
+	int ret;
+	int cnt = 0;;
+    struct netif_queue_conf *qconf;
+
+    for (i = 0; i < lc_conf->nports; i++) {
+        pid = lc_conf->pqs[i].id;
+		for (j = 0; j < lc_conf->pqs[i].nrxq; j++) {
+			qconf = &lc_conf->pqs[i].rxqs[j];
+			qid = qconf->id;
+			data = pid << 16 | qid;
+
+			//struct rte_eth_dev *dev;
+			//dev = &rte_eth_devices[pid];
+			ret = rte_eth_dev_rx_intr_ctl_q(pid, qid, RTE_EPOLL_PER_THREAD, RTE_INTR_EVENT_ADD, 
+											(void *)((uintptr_t)data));
+			if (ret) {
+				return ret;
+			}
+
+			cnt ++;
+		}
+    }
+
+	return cnt;
+}
+
+static void turn_on_intr(struct netif_lcore_conf *lc_conf)
+{
+    int i, j;
+    portid_t pid;
+	queueid_t qid;
+    struct netif_queue_conf *qconf;
+
+    for (i = 0; i < lc_conf->nports; i++) {
+        pid = lc_conf->pqs[i].id;
+
+        //assert(pid <= bond_pid_end);
+
+		for (j = 0; j < lc_conf->pqs[i].nrxq; j++) {
+			qconf = &lc_conf->pqs[i].rxqs[j];
+			qid = qconf->id;
+
+			//rte_spinlock_lock(&(locks[port_id]));
+			rte_eth_dev_rx_intr_enable(pid, qid);
+			//rte_spinlock_unlock(&(locks[port_id]));
+
+		}
+    }
+}
+
+static int sleep_until_rx_interrupt(int num, int timeout)
+{
+	struct rte_epoll_event event[num];
+	int n, i;
+	uint16_t port_id;
+	uint8_t queue_id;
+	void *data;
+
+	// timeout in milliseconds: 1/1000 sec
+	// -1: block
+	// 0: no wait
+	// >=1: wait till exirped
+	n = rte_epoll_wait(RTE_EPOLL_PER_THREAD, event, num, timeout);
+
+	for (i = 0; i < n; i++) {
+		data = event[i].epdata.data;
+
+		port_id = ((uintptr_t)data) >> 16;
+		queue_id = ((uintptr_t)data) & RTE_LEN2MASK(16, uint16_t);
+
+		rte_eth_dev_rx_intr_disable(port_id, queue_id);
+
+#if 0
+		RTE_LOG(INFO, NETIF,
+				"lcore %u is waked up from rx interrupt on"
+				" port %d queue %d\n",
+				rte_lcore_id(), port_id, queue_id);
+#endif
+	}
+
+	return 0;
+}
+
+static int netif_intr_loop(void *dummy)
+{
+	struct netif_lcore_loop_job *job;
+	lcoreid_t cid = rte_lcore_id();
+	int cnt;
+	struct netif_lcore_conf *lc_conf;
+
+	assert(LCORE_ID_ANY != cid);
+
+	try_isol_rxq_lcore_loop();
+
+	if (0 == lcore_conf[lcore2index[cid]].nports) {
+		RTE_LOG(INFO, NETIF, "[%s] Lcore %d has nothing to do.\n", __func__, cid);
+		//return EDPVS_DISABLED;
+		return EDPVS_OK;
+		//return EDPVS_IDLE;
+	}
+
+    RTE_LOG(INFO, NETIF, "[%s] Lcore %d has to do.\n", __func__, cid);
+
+	list_for_each_entry(job, &netif_lcore_jobs[NETIF_LCORE_JOB_INIT], list) {
+		do_lcore_job(job);
+	}
+
+	lc_conf = &lcore_conf[lcore2index[cid]];
+	g_intr_fd[cid] = rte_intr_tls_epfd();
+	cnt = event_register(lc_conf);
+	RTE_LOG(INFO, NETIF, "cid=%d, fd=%d \n", cid, g_intr_fd[cid]);
+
+	while (1) {
+		/*
+		 * job callback functions:
+		 * recv_fwd: lcore_job_recv_fwd
+		 * xmit: lcore_job_xmit
+		 * timer_manage: lcore_job_timer_manage
+		 * slave_ctrl_plane: slave_lcore_loop_func
+		 *
+		 * job_slow:
+		 * neigh_sync: neigh_process_ring
+		 * ipv4_frg: ipv4_frag_job
+		 */
+		lcore_stats[cid].lcore_loop++;
+		list_for_each_entry(job, &netif_lcore_jobs[NETIF_LCORE_JOB_LOOP], list) {
+			if (cnt > 0 && job->func == lcore_job_recv_fwd) {
+				turn_on_intr(lc_conf);
+				sleep_until_rx_interrupt(cnt, -1);
+			}
+
+			do_lcore_job(job);
+		}
+
+		list_for_each_entry(job, &netif_lcore_jobs[NETIF_LCORE_JOB_SLOW], list) {
+			// ipv4_frag_job
+			// neigh_process_ring
+			do_lcore_job(job);
+		}
+	}
+
+	return EDPVS_OK;
+}
+#endif
+
 int netif_lcore_start(void)
 {
+#if CONFIG_ENABLE_RX_INTERRUPT
+	// for using multiple threads on a lcore: -c 0xf -l 0-6 --lcores='0,(1,3)@2,(2,4)@3,(5,6)@1'
+	int i;
+
+	for (i = 0; i < DPVS_MAX_LCORE; i++) {
+		g_intr_fd[i] = -1;
+	}
+
+    rte_eal_mp_remote_launch(netif_intr_loop, NULL, SKIP_MASTER);
+#else
     rte_eal_mp_remote_launch(netif_loop, NULL, SKIP_MASTER);
+#endif
+
     return EDPVS_OK;
 }
 

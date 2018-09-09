@@ -13,7 +13,7 @@ extern int32_t nslog_syslog(uint32_t level, const char *fmt, ...);
 #if defined(DEBUG) && defined(CONFIG_DPVS_ENABLE_LOCAL_DEBUG)
 #undef RTE_LOG
 
-#if 0
+#if 1
 // redefine RTE_LOG()
 #define RTE_LOG(l, t, fmt, ...) \
 	rte_log(RTE_LOG_ ## l,  RTE_LOGTYPE_ ## t,\

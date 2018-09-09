@@ -383,6 +383,8 @@ int msg_send(struct dpvs_msg *msg, lcoreid_t cid, uint32_t flags, struct dpvs_ms
         return EDPVS_DPDKAPIFAIL;
     }
 
+	netif_wakeup_thread(1);
+
     if (flags & DPVS_MSG_F_ASYNC)
         return EDPVS_OK;
 
@@ -493,6 +495,8 @@ int multicast_msg_send(struct dpvs_msg *msg, uint32_t flags, struct dpvs_multica
     list_add_tail(&mc_msg->list, &mc_wait_list.list);
     --mc_wait_list.free_cnt;
     rte_rwlock_write_unlock(&mc_wait_lock);
+
+	netif_wakeup_thread(1);
 
     if (flags & DPVS_MSG_F_ASYNC)
         return EDPVS_OK;
