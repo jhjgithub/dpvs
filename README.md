@@ -29,6 +29,15 @@ Major features of `DPVS` including:
 * Security aspect, support *TCP syn-proxy*, *Conn-Limit*, *black-list*.
 * QoS: *Traffic Control*.
 
+Extended features for Firewall(NetShield) are:
+* Packet Classification: HyperSplit
+* Sesstion Table: Cuckoo Hash
+* Hash Algorithm: MurmurHash3
+* Session Timeout: Wheel Timer
+* Balcklist: Interval Tree from Linux
+* NAT: S/D/BNAT 
+* Supporting `Rx Interrupt` not to waste cpu cycle and power on busy polling
+
 `DPVS` feature modules are illustrated as following picture.
 
 ![modules](./pic/modules.png)
