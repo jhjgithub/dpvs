@@ -3945,7 +3945,7 @@ int netif_wakeup_thread(int outmsg)
 	}
 
 	// wake up the thread
-	int u = 9999;
+	int u = -1;
 	write(fd, &u, sizeof(u));
 
 	return 0;
@@ -4067,7 +4067,6 @@ static int netif_intr_loop(void *dummy)
 	lc_conf = &lcore_conf[lcore2index[cid]];
 	g_intr_fd[cid] = rte_intr_tls_epfd();
 	cnt = event_register(lc_conf);
-	RTE_LOG(INFO, NETIF, "cid=%d, fd=%d \n", cid, g_intr_fd[cid]);
 
 	while (1) {
 		/*

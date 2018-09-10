@@ -1,0 +1,31 @@
+From 3934351b84ef09472cddc4018e7c715cfce5673e Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=EC=A0=95=EC=A7=80=ED=98=B8?= <jiho.jung@piolink.com>
+Date: Sun, 9 Sep 2018 18:08:03 +0900
+Subject: [PATCH 1/2] Add wake up the thread if needed
+
+---
+ lib/librte_eal/linuxapp/igb_uio/igb_uio.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/lib/librte_eal/linuxapp/igb_uio/igb_uio.c b/lib/librte_eal/linuxapp/igb_uio/igb_uio.c
+index a3a98c173..07160ebd2 100644
+--- a/lib/librte_eal/linuxapp/igb_uio/igb_uio.c
++++ b/lib/librte_eal/linuxapp/igb_uio/igb_uio.c
+@@ -181,6 +181,14 @@ igbuio_pci_irqcontrol(struct uio_info *info, s32 irq_state)
+ 	struct irq_data *irq = irq_get_irq_data(udev->info.irq);
+ #endif
+ 
++	if (irq_state == -1) {
++		// wake up the thread waiting rx interrupt
++		struct uio_info *info = &udev->info;
++		uio_event_notify(info);
++
++		return 0;
++	}
++
+ 	pci_cfg_access_lock(pdev);
+ 
+ 	if (udev->mode == RTE_INTR_MODE_MSIX || udev->mode == RTE_INTR_MODE_MSI) {
+-- 
+2.17.1
+
